@@ -1,12 +1,13 @@
 import datetime
 import json
 import logging
-import momi
+import msprime
 import numpy as np
 import os
 import string
 import time
 import tempfile
+import toytree
 
 from collections import OrderedDict
 
@@ -59,6 +60,13 @@ class Core(object):
         self.paramsdict = OrderedDict([
                        ("simulation_name", name),
                        ("project_dir", "./default_PIED"),
+                       ("birth_rate", 1),
+                       ("stop_criterion", "taxa"),
+                       ("ntaxa", 20),
+                       ("time", 4),
+                       ("process", "abundance"),
+                       ("speciation_rate_shift", False),
+                       ("alpha", 0.1),
         ])
 
         ## Separator to use for reading/writing files
@@ -314,7 +322,6 @@ class Core(object):
 
 
     def parallel_simulate(self, ipyclient, nsims=1, quiet=False, verbose=False):
-        npops = self.paramsdict["npops"]
         parallel_jobs = {}
         _ipcluster = {}
         ## store ipyclient engine pids to the Core so we can
@@ -370,9 +377,8 @@ class Core(object):
     
     def serial_simulate(self, nsims=1, quiet=False, verbose=False):
         import pandas as pd
-        npops = self.paramsdict["npops"]
-    
-        msfs_list = []
+
+        tree_list = []
 
         printstr = " Performing Simulations    | {} |"
         start = time.time()
@@ -381,24 +387,8 @@ class Core(object):
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
                 if not quiet: progressbar(nsims, i, printstr.format(elapsed))
 
-                sfs_list = []
-                for tidx, tau_pops in enumerate(pops_per_tau):
-                    for pidx in range(tau_pops):
-                        name = "pop{}-{}".format(tidx, pidx)
-                        sfs_list.append(self._simulate(name,
-                                                N_e=N_es[tidx],
-                                                tau=taus[tidx],
-                                                epsilon=epsilons[tidx]))
-                msfs = multiSFS(sfs_list,\
-                                sort=self._hackersonly["sorted_sfs"],\
-                                proportions=self._hackersonly["proportional_msfs"])
-
-                ## In the pipe_master model the first tau in the list is the co-expansion time
-                ## If/when you get around to doing the msbayes model of multiple coexpansion
-                ## pulses, then this will have to change 
-                msfs.set_params(pd.Series([zeta, zeta_e, psi, taus[0], pops_per_tau, taus, epsilons, N_es],\
-                                        index=["zeta", "zeta_e", "psi", "t_s", "pops_per_tau", "taus", "epsilons", "N_es"]))
-                msfs_list.append(msfs)
+                res = self._simulate()
+                tree_list.append(res)
 
             except KeyboardInterrupt as inst:
                 print("\n    Cancelling remaining simulations")
@@ -409,45 +399,151 @@ class Core(object):
 
         if not quiet: progressbar(100, 100, " Finished {} simulations in   {}\n".format(i+1, elapsed))
 
-        return msfs_list
+        return tree_list
 
 
-    def _simulate(self, name, N_e=1e6, tau=20000, epsilon=10, verbose=False):
-        model = momi.Core(N_e=N_e)
-        model.add_leaf(name)
-        if epsilon > 0:
-            # epsilon positive, expansion
-            model.set_size(name, t=tau, N=N_e/epsilon)
-        elif epsilon < 0:
-            # epsilon negative, bottleneck
-            model.set_size(name, t=tau, N=N_e/epsilon)
-        else:
-            # epsilon == 0 no size change
-            pass
-        sampled_n_dict={name:self.paramsdict["nsamps"]}
-        if verbose: print(sampled_n_dict)
-        ac = model.simulate_data(length=self.paramsdict["length"],
-                                num_replicates=self.paramsdict["num_replicates"],
-                                recoms_per_gen=self.paramsdict["recoms_per_gen"],
-                                muts_per_gen=self._sample_mu(),
-                                sampled_n_dict=sampled_n_dict)
-        try:
-            sfs = ac.extract_sfs(n_blocks=1)
-        except ValueError:
-            ## If _sample_mu() returns zero, or a very small value with respect to
-            ## sequence length, Ne, and tau, then you can get a case where there
-            ## are no snps in the data, and constructing the sfs freaks.
-            raise PIEDError("Can't extract SFS from a simulation with no variation. Check that muts_per_gen looks reasonable.")
+    def _simulate(self, b=1, stop="taxa", n=50, t=4, feature_dict=None, process="abundance",
+                alpha=0, speciation_rate_shifts=False, verbose=False):
+        if not feature_dict:
+            # Each species has a dictionary of features, these are the default values
+            #  abundance - Abundance of the species
+            #  r - Rate at which abundance changes, can be negative
+            #  trait - This is a random trait value that evolves by BM
+            #  lambda - Per lineage speciation rate
+            feature_dict = {"abundance":{"sigma":0.1, "zbar_0":50000, "log":True, "dtype":"int"},
+                          "r":{"sigma":0.01, "zbar_0":0, "log":False, "dtype":"float"},
+                          "trait":{"sigma":2, "zbar_0":0, "log":False, "dtype":"float"},
+                          "lambda_":{"sigma":0.1, "zbar_0":b, "log":False, "dtype":"float"}
+                         }
 
-        return sfs
+        tre = toytree.tree()
+        for fname, fdict in feature_dict.items():
+            tre.treenode.add_feature(fname, fdict["zbar_0"])
+
+        taxa_stop = n
+        time_stop = t
+
+        ext = 0
+        evnts = 0
+        t = 0
+        while(1):
+
+            ## Get list of extant tips
+            tips = tre.treenode.get_leaves()
+
+            # Sample time interval
+            if speciation_rate_shifts:
+                lambs = np.array([tip.lambda_ for tip in tips])
+                # Run a horse race for all lineages, smallest time sampled wins
+                ts = np.random.exponential(lambs)
+                idx = np.where(ts == ts.min())[0][0]
+                dt = ts.min()
+                sp = tips[idx]
+            else:
+                # This isn't strictly necessary, because if the rate shift model
+                # is turned off then all tips will have equal lambda and equal
+                # probability of being sampled, but keeping this here for now
+                # for the hell of it.
+                dt = np.random.exponential(1/(len(tips) * b))
+                sp = np.random.choice(tips)
+
+            t = t + dt
+            evnts += 1
+
+            c1 = sp.add_child(name=str(t)+"1", dist=0)
+            c2 = sp.add_child(name=str(t)+"2", dist=0)
+            try:
+                # Always have at least 1 individual for each daughter species
+                # Raises ValueError if sp.abundanc == 1
+                abund = np.random.randint(1, sp.abundance)
+            except ValueError as inst:
+                # If a species of abundance 1 speciates we need to allow this
+                sp.abundance = 2
+                abund = 1
+
+            for c in [c1, c2]:
+                for fname, fdict in feature_dict.items():
+                    c.add_feature(fname, fdict["zbar_0"])
+                
+            c1.add_feature("abundance", abund)
+            c2.add_feature("abundance", sp.abundance-abund)
+
+            # Update branch length, evolve features, and update abundance
+            tips = tre.treenode.get_leaves()
+            for x in tips:
+                x.dist += dt
+                if process == "abundance":
+                    # If 'abundance' log species abundances change via Brownian motion
+                    for fname, fdict in feature_dict.items():
+                        x.add_feature(fname, _bm(getattr(x, fname),
+                                                fdict["sigma"],
+                                                dt=dt,
+                                                log=fdict["log"],
+                                                dtype=fdict["dtype"]))
+                elif process == "rate":
+                    for fname, fdict in feature_dict.items():
+                        # Update 'lambda_', 'r' and 'trait', but skip 'abundance'
+                        #import pdb; pdb.set_trace()
+                        if fname == "abundance": continue
+                        x.add_feature(fname, _bm(getattr(x, fname),
+                                                fdict["sigma"],
+                                                dt=dt,
+                                                log=fdict["log"],
+                                                dtype=fdict["dtype"]))
+                        # Apply the population size change
+                        x.abundance = int(x.abundance * (np.exp(x.r)**dt))
+                else:
+                    raise Exception("process must be 'abundance' or 'rate'. You put {}".format(process))
+
+            # Check boundary conditions for abundance and lambda
+            for x in tips[:]:
+                # Check extinction and prune out extinct and any resulting hanging branches
+                # If you're the only individual left, you have nobody to mate with so you die.
+                if x.abundance <= 1:
+                    tips.remove(x)
+                    if len(tips) == 0:
+                        # Can't prune to an empty tree, so simply return a new empty tree
+                        tre = toytree.tree()
+                    else:
+                        tre.treenode.prune(tips, preserve_branch_length=True)
+                    ext += 1
+
+                # The speciation rate can't be negative
+                elif x.lambda_ < 0:
+                    x.lambda_ = 0
+
+            ## This shouldn't be necessary now that we're using the treenode.prune() method
+            tre = _prune(tre)
+
+            tips = tre.treenode.get_leaves()
+            # Check stopping criterion
+            done = False
+            if stop == "taxa":
+                if len(tips) >= taxa_stop:
+                    done = True
+            elif stop == "time":
+                if t >= time_stop:
+                    done = True
+            if len(tips) == 1 and tips[0].name == '0':
+                print("All lineages extinct")
+                done = True
+            if done:
+                if verbose:
+                    print("ntips {}".format(len(tips)))
+                    print("time {}".format(t))
+                    print("Birth events {}".format(evnts))
+                    print("Extinctions (per birth) {} ({})".format(ext, ext/evnts))
+                tre._coords.update()
+                for i, t in enumerate(tips[::-1]):
+                    t.name = "r{}".format(i)
+                return tre
 
     
     def simulate(self, nsims=1, ipyclient=None, quiet=False, verbose=False, force=False):
         """
         Do the heavy lifting here. 
 
-        :param int nsims: The number of PIED codemographic simulations to
-            perform.
+        :param int nsims: The number of PIED simulations to perform
         :param ipyparallel.Client ipyclient: If specified use this ipyparallel
             client to parallelize simulation runs. If not specified simulations
             will be run serially.
@@ -458,8 +554,6 @@ class Core(object):
             any previously generated simulation in the `project_dir/{name}-SIMOUT.txt`
             file.
         """
-        param_df = pd.DataFrame([], columns=["zeta", "psi", "pops_per_tau", "taus", "epsilons"])
-
         if not quiet: print("    Generating {} simulation(s).".format(nsims))
 
         if not os.path.exists(self.paramsdict["project_dir"]):
@@ -479,23 +573,18 @@ class Core(object):
 
         simfile = os.path.join(self.paramsdict["project_dir"], "{}-SIMOUT.csv".format(self.name))
         ## Open output file. If force then overwrite existing, otherwise just append.
+        mode = 'a'
         if force:
             ## Prevent from shooting yourself in the foot with -f
             try:
+                mode = 'w'
                 os.rename(simfile, simfile+".bak")
             except FileNotFoundError:
                 ## If the simfile doesn't exist catch the error and move on
                 pass
-        try:
-            dat = pd.read_csv(simfile, sep=self._sep)
-        except FileNotFoundError:
-            dat = pd.DataFrame()
 
-        ## sort=False suppresses a warning about non-concatenation index if
-        ## SIMOUT is empty
-        msfs_df = pd.DataFrame(pd.concat([x.to_dataframe() for x in msfs_list], sort=False)).fillna(0)
-        dat = pd.concat([dat, result_df], sort=False)
-        dat.to_csv(simfile, header=True, index=False, sep=self._sep, float_format='%.3f')
+        with open(simfile, mode) as output:
+            output.write("\n".join([x.write() for x in result_list]) + "\n")
 
 
 def serial_simulate(model, nsims=1, quiet=False, verbose=False):
@@ -504,6 +593,39 @@ def serial_simulate(model, nsims=1, quiet=False, verbose=False):
     res = model.serial_simulate(nsims, quiet=quiet, verbose=verbose)
     LOGGER.debug("Leaving sim - {} on pid {}".format(model, os.getpid()))
     return res
+
+## Brownian motion function
+def _bm(mean, var, dt, log=True, dtype="int"):
+    ret = 0
+    mean = np.float(mean)
+    if dtype == "int":
+        # Avoid log(1)
+        if not log or mean <= 1:
+            ret = np.int(np.round(np.random.normal(mean, var*dt)))
+        else:
+            try:
+                ret = np.int(np.round(np.exp(np.random.normal(np.log(mean), var*dt))))
+            except:
+                import pdb; pdb.set_trace()
+
+    elif dtype == "float":
+        ret = np.random.normal(mean, var*dt)
+    else:
+       raise Exception("bm dtype must be 'int' or 'float'. You put: {}".format(dtype))
+    return ret
+
+
+def _prune(tre, verbose=False):
+    ttree = tre.copy()
+    tips = ttree.treenode.get_leaves()
+    
+    if np.any(np.array([x.height for x in tips]) > 0):
+        for t in tips:
+            if not np.isclose(t.height, 0):
+                if verbose: print("Removing node/height {}/{}".format(t.name, t.height))
+                t.delete(prevent_nondicotomic=False)
+                ttree = prune(ttree)
+    return ttree
 
 
 ##########################################
@@ -636,6 +758,13 @@ def _save_json(data, quiet=False):
 PARAMS = {
     "simulation_name" : "The name of this simulation scenario",\
     "project_dir" : "Where to save files",\
+    "birth_rate" : "Speciation rate",\
+    "stop_criterion" : "Whether to stop on ntaxa or time",\
+    "ntaxa" : "Number of taxa to simulate if stop is `ntaxa`",\
+    "time" : "Amount of time to simulate if stop is `time`",\
+    "process" : "Whether to evolve `abundance` or growth `rate` via BM",\
+    "speciation_rate_shift" : "Whether to allow speciation rates to change along the branches a la ClaDS",\
+    "alpha" : "Rate shift if speciation_rate_shift is True"
 }
 
 

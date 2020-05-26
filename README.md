@@ -5,17 +5,6 @@ A birth/death tree with abundances. Abundance can evolve either as a BM process
 with random fission at speciation events, or the rate of change of abundance
 can evolve as BM.
 
-## Where the work is done
-Inside PIED.__main__ around line 159 is a call to `data.simulate()`. This
-will call the workhorse function of the primary class, and so PIED.Core
-should have a `simulate()` function which does the work and accepts and
-handles well the following arguments:
-* nsims     The number of simulations to run 
-* ipyclient The ipyparallel client to use
-* quiet     Don't print anything to standard out
-* verbose   Print more stuff to standard out
-* force     Overwrite previous simulations if necessary
-
 ## Default CLI args
 The default CLI will parse a handful of universally useful arguments:
 * `-n`  This is the flag to create a new params file

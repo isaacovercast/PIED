@@ -280,12 +280,8 @@ def main():
         ## launch or load simulationwith custom profile/pid
         data = getmodel(args, params)
 
-        ## Validate, format, and import empirical data
-        if args.empirical:
-            import_empirical(args.empirical)
-
         ## Generate numerous simulations
-        elif args.sims:
+        if args.sims:
             ## Only blank the log file if we're actually going to do real
             ## work. In practice the log file should never get this big.
             if os.path.exists(PIED.__debugfile__):
