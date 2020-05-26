@@ -65,8 +65,16 @@ class Core(object):
                        ("ntaxa", 20),
                        ("time", 4),
                        ("process", "abundance"),
-                       ("speciation_rate_shift", False),
+                       ("ClaDS", False),
+                       ("abundance_mean", 50000),
+                       ("abundance_sigma", 0.1),
+                       ("growth_rate_mean", 0),
+                       ("growth_rate_sigma", 0.01),
+                       ("lambda_mean", 1),
+                       ("lambda_sigma", 0.1),
                        ("alpha", 0.1),
+                       ("mutation_rate", 1e-5),
+                       ("sample_size", 10)
         ])
 
         ## Separator to use for reading/writing files
@@ -136,6 +144,9 @@ class Core(object):
         ## TODO: This should actually check the values and make sure they make sense
         ## FIXME: PIED parameters need to be updated here.
         try:
+            ints = ["birth_rate", "ntaxa", "abundance_mean", "sample_size"]
+            floats = ["time", "abundance_sigma", "growth_rate_mean", "growth_rate_sigma",\
+                        "lambda_mean", "lambda_sigma", "alpha", "mutation_rate"]
             ## Cast params to correct types
             if param == "project_dir":
                 ## If it already exists then just inform the user that we'll be adding
@@ -147,16 +158,21 @@ class Core(object):
                 if not os.path.exists(self.paramsdict["project_dir"]):
                     os.mkdir(self.paramsdict["project_dir"])
             
-            elif param in ["N_e", "tau", "epsilon"]:
-                tup = tuplecheck(newvalue, dtype=int)
-                if isinstance(tup, tuple):
-                    self.paramsdict[param] = tup
-                    if tup[0] <= 0:
-                        raise PIEDError("{} values must be strictly > 0. You put {}".format(param, tup))
-                else:
-                    self.paramsdict[param] = tup
-                    if tup <= 0:
-                        raise PIEDError("{} values must be strictly > 0. You put {}".format(param, tup))
+            elif param == "stop_criterion":
+                if newvalue not in ["taxa", "time"]:
+                    raise PIEDError("Bad parameter: `stop_criterion` must "\
+                                    + "be one of `taxa` or `time`.")
+            elif param == "process":
+                if newvalue not in ["abundance", "rate"]:
+                    raise PIEDError("Bad parameter: `process` must be "\
+                                    + "`abundance` or `rate`.")
+
+            elif param in ints + floats:
+                dtype = float
+                if param in ints:
+                    dtype = int
+                tup = tuplecheck(newvalue, dtype=dtype)
+                self.paramsdict[param] = tup
             else:
                 self.paramsdict[param] = newvalue
         except Exception as inst:
@@ -402,26 +418,26 @@ class Core(object):
         return tree_list
 
 
-    def _simulate(self, b=1, stop="taxa", n=50, t=4, feature_dict=None, process="abundance",
-                alpha=0, speciation_rate_shifts=False, verbose=False):
-        if not feature_dict:
-            # Each species has a dictionary of features, these are the default values
-            #  abundance - Abundance of the species
-            #  r - Rate at which abundance changes, can be negative
-            #  trait - This is a random trait value that evolves by BM
-            #  lambda - Per lineage speciation rate
-            feature_dict = {"abundance":{"sigma":0.1, "zbar_0":50000, "log":True, "dtype":"int"},
+    def _simulate(self, 
+                alpha=0, ClaDS=False, verbose=False):
+        
+        # Each species has a dictionary of features, these are the default values
+        #  abundance - Abundance of the species
+        #  r - Rate at which abundance changes, can be negative
+        #  trait - This is a random trait value that evolves by BM
+        #  lambda - Per lineage speciation rate
+        feature_dict = {"abundance":{"sigma":0.1, "zbar_0":50000, "log":True, "dtype":"int"},
                           "r":{"sigma":0.01, "zbar_0":0, "log":False, "dtype":"float"},
                           "trait":{"sigma":2, "zbar_0":0, "log":False, "dtype":"float"},
-                          "lambda_":{"sigma":0.1, "zbar_0":b, "log":False, "dtype":"float"}
+                          "lambda_":{"sigma":0.1, "zbar_0":self.paramsdict["birth_rate"], "log":False, "dtype":"float"}
                          }
 
         tre = toytree.tree()
         for fname, fdict in feature_dict.items():
             tre.treenode.add_feature(fname, fdict["zbar_0"])
 
-        taxa_stop = n
-        time_stop = t
+        taxa_stop = self.paramsdict["ntaxa"]
+        time_stop = self.paramsdict["time"]
 
         ext = 0
         evnts = 0
@@ -432,7 +448,7 @@ class Core(object):
             tips = tre.treenode.get_leaves()
 
             # Sample time interval
-            if speciation_rate_shifts:
+            if ClaDS:
                 lambs = np.array([tip.lambda_ for tip in tips])
                 # Run a horse race for all lineages, smallest time sampled wins
                 ts = np.random.exponential(lambs)
@@ -444,7 +460,7 @@ class Core(object):
                 # is turned off then all tips will have equal lambda and equal
                 # probability of being sampled, but keeping this here for now
                 # for the hell of it.
-                dt = np.random.exponential(1/(len(tips) * b))
+                dt = np.random.exponential(1/(len(tips) * self.paramsdict["birth_rate"]))
                 sp = np.random.choice(tips)
 
             t = t + dt
@@ -472,7 +488,7 @@ class Core(object):
             tips = tre.treenode.get_leaves()
             for x in tips:
                 x.dist += dt
-                if process == "abundance":
+                if self.paramsdict["process"] == "abundance":
                     # If 'abundance' log species abundances change via Brownian motion
                     for fname, fdict in feature_dict.items():
                         x.add_feature(fname, _bm(getattr(x, fname),
@@ -480,7 +496,7 @@ class Core(object):
                                                 dt=dt,
                                                 log=fdict["log"],
                                                 dtype=fdict["dtype"]))
-                elif process == "rate":
+                else:
                     for fname, fdict in feature_dict.items():
                         # Update 'lambda_', 'r' and 'trait', but skip 'abundance'
                         #import pdb; pdb.set_trace()
@@ -491,9 +507,7 @@ class Core(object):
                                                 log=fdict["log"],
                                                 dtype=fdict["dtype"]))
                         # Apply the population size change
-                        x.abundance = int(x.abundance * (np.exp(x.r)**dt))
-                else:
-                    raise Exception("process must be 'abundance' or 'rate'. You put {}".format(process))
+                        x.abundance = int(x.abundance * (np.exp(x.r**dt)))
 
             # Check boundary conditions for abundance and lambda
             for x in tips[:]:
@@ -518,11 +532,11 @@ class Core(object):
             tips = tre.treenode.get_leaves()
             # Check stopping criterion
             done = False
-            if stop == "taxa":
-                if len(tips) >= taxa_stop:
+            if self.paramsdict["stop_criterion"]  == "taxa":
+                if len(tips) >= self.paramsdict["ntaxa"]:
                     done = True
-            elif stop == "time":
-                if t >= time_stop:
+            else:
+                if t >= self.paramsdict["time"]:
                     done = True
             if len(tips) == 1 and tips[0].name == '0':
                 print("All lineages extinct")
@@ -763,8 +777,16 @@ PARAMS = {
     "ntaxa" : "Number of taxa to simulate if stop is `ntaxa`",\
     "time" : "Amount of time to simulate if stop is `time`",\
     "process" : "Whether to evolve `abundance` or growth `rate` via BM",\
-    "speciation_rate_shift" : "Whether to allow speciation rates to change along the branches a la ClaDS",\
-    "alpha" : "Rate shift if speciation_rate_shift is True"
+    "ClaDS" : "Whether to allow speciation rates to change along the branches a la ClaDS",\
+    "abundance_mean" : "Ancestral abundance at time 0",\
+    "abundance_sigma" : "Rate at which abundance changes if process is `abundance`",\
+    "growth_rate_mean" : "Ancestral population growth rate at time 0.",\
+    "growth_rate_sigma" : "Rate at which growth rate changes if process is `rate`",\
+    "lambda_mean" : "Ancestral speciation rate at time 0.",\
+    "lambda_sigma" : "Rate at which speciation rate changes if ClaDS is True.",\
+    "alpha" : "Rate shift if ClaDS is True",\
+    "mutation_rate" : "Mutation rate per base per generation",\
+    "sample_size" : "Number of samples to draw for calculating genetic diversity"
 }
 
 

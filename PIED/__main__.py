@@ -306,7 +306,7 @@ BAD_PARAMETER_ERROR = """
 PIED_HEADER = \
 "\n -------------------------------------------------------------"+\
 "\n  PIED [v.{}]".format(PIED.__version__)+\
-"\n  Phylogeographic Temporal Analysis"+\
+"\n  PhIgurE out an acronymD"+\
 "\n -------------------------------------------------------------"
 
 
