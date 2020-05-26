@@ -22,6 +22,7 @@ Look at the params and edit them if you wish:
     4                    ## [5] [time]: Amount of time to simulate if stop is `time`
     abundance            ## [6] [process]: Whether to evolve `abundance` or growth `rate` via BM
     False                ## [7] [speciation_rate_shift]: Whether to allow speciation rates to change along the branches a la ClaDS
+    0.1                  ## [8] [alpha]: Rate shift if speciation_rate_shift is True
 
 Run 10 simulations:
 
