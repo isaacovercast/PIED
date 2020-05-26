@@ -1,9 +1,10 @@
 ![panda pied python](./img/pied_small.png)
 
 # PIED
-A birth/death tree with abundances. Abundance can evolve either as a BM process
-with random fission at speciation events, or the rate of change of abundance
-can evolve as BM.
+A birth/death process with abundances and genetic diversity at the tips. 
+Abundance can evolve either as a BM process with random fission at speciation
+events, or the rate of change of abundance can evolve as BM. Speciation rate
+can also shift at branching events in the manner of ClaDS.
 
 ## Usage
 Create a params file:
