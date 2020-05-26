@@ -1,0 +1,4 @@
+nbsphinx
+matplotlib
+pandas
+scipy
