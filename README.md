@@ -3,8 +3,8 @@
 # PIED
 A birth/death process with abundances and genetic diversity at the tips. 
 Abundance can evolve either as a BM process with random fission at speciation
-events, or the rate of change of abundance can evolve as BM and abundance
-changes through time via n * exp(x.r)\*\*dt. Speciation rate can also shift
+events, or the rate of change (r) of abundance can evolve as BM and abundance
+changes through time via n * exp(r)\*\*dt. Speciation rate can also shift
 at branching events in the manner of ClaDS. 
 
 ## Usage
