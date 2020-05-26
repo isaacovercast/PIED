@@ -23,14 +23,10 @@ Long form arguments:
     parser.add_argument("--ipcluster", metavar="ipcluster", dest="ipcluster",
 
 ## Usage
-* Clone this repo
-* Replace PIED with your chosen new package name:
+Create a params file:
 
-    egrep -lRZ 'PIED' . | xargs -0 -l sed -i -e 's/PIED/foo/g'
+    PIED -n wat
 
-* If you choose, you can rename the `Core` class to something more meaningful
+Edit the params file to update params. Run 10 simulations:
 
-    egrep -lRZ 'Core' . | xargs -0 -l sed -i -e 's/Core/Bar/g'
-
-* You are probably 95% there, but there will probably be some things to clean
-up. Better than doing it all from scratch.
+    PIED -p params-wat.txt -s 10
