@@ -39,6 +39,10 @@ Run 10 simulations:
 
 Results are written to `default_PIED/wat-SIMOUT.csv`.
 
+Run 10 simulations on 10 cores in parallel:
+
+    PIED -p params-wat.txt -s 10 -c 10
+
 ## Default CLI args
 The default CLI will parse a handful of universally useful arguments:
 * `-n`  This is the flag to create a new params file
