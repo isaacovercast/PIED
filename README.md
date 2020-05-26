@@ -5,6 +5,29 @@ A birth/death tree with abundances. Abundance can evolve either as a BM process
 with random fission at speciation events, or the rate of change of abundance
 can evolve as BM.
 
+## Usage
+Create a params file:
+
+    PIED -n wat
+
+Look at the params and edit them if you wish:
+
+    ------- PIED params file (v.0.0.2)----------------------------------------------
+    wat                  ## [0] [simulation_name]: The name of this simulation scenario
+    ./default_PIED       ## [1] [project_dir]: Where to save files
+    1                    ## [2] [birth_rate]: Speciation rate
+    taxa                 ## [3] [stop_criterion]: Whether to stop on ntaxa or time
+    20                   ## [4] [ntaxa]: Number of taxa to simulate if stop is `ntaxa`
+    4                    ## [5] [time]: Amount of time to simulate if stop is `time`
+    abundance            ## [6] [process]: Whether to evolve `abundance` or growth `rate` via BM
+    False                ## [7] [speciation_rate_shift]: Whether to allow speciation rates to change along the branches a la ClaDS
+
+Run 10 simulations:
+
+    PIED -p params-wat.txt -s 10
+
+Results are written to `default_PIED/wat-SIMOUT.csv`.
+
 ## Default CLI args
 The default CLI will parse a handful of universally useful arguments:
 * `-n`  This is the flag to create a new params file
@@ -21,12 +44,3 @@ Long form arguments:
 
 * `--ipcluster <cluster_id>`    Pass in a cluster ID for a running up ipcluster
     parser.add_argument("--ipcluster", metavar="ipcluster", dest="ipcluster",
-
-## Usage
-Create a params file:
-
-    PIED -n wat
-
-Edit the params file to update params. Run 10 simulations:
-
-    PIED -p params-wat.txt -s 10
