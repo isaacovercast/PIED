@@ -1,4 +1,4 @@
-![panda pied python](./img/pied.png)
+![panda pied python](./img/pied_small.png)
 
 # PIED
 A birth/death tree with abundances. Abundance can evolve either as a BM process
