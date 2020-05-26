@@ -33,11 +33,11 @@ Results are written to `default_PIED/wat-SIMOUT.csv`.
 The default CLI will parse a handful of universally useful arguments:
 * `-n`  This is the flag to create a new params file
 * `-p`  The flag to specify a params file for a new run of the app
-* `-s`  How many simulations to run (if it's a simulation based model)
+* `-s`  How many simulations to run
 * `-c`  How many cores to spin up with the ipyparallel backend
 * `-f`  Force the operation (overwrite anything that already exists)
 * `-v`  Print out more progress info
-* `-q`  Don't print anythin to standard out
+* `-q`  Don't print anything to standard out
 * `-d`  Turn on debug mode to log debug info to a file
 * `-V`  Print version info and exit
 
