@@ -22,8 +22,16 @@ Look at the params and edit them if you wish:
     20                   ## [4] [ntaxa]: Number of taxa to simulate if stop is `ntaxa`
     4                    ## [5] [time]: Amount of time to simulate if stop is `time`
     abundance            ## [6] [process]: Whether to evolve `abundance` or growth `rate` via BM
-    False                ## [7] [speciation_rate_shift]: Whether to allow speciation rates to change along the branches a la ClaDS
-    0.1                  ## [8] [alpha]: Rate shift if speciation_rate_shift is True
+    False                ## [7] [ClaDS]: Whether to allow speciation rates to change along the branches a la ClaDS
+    50000                ## [8] [abundance_mean]: Ancestral abundance at time 0
+    0.1                  ## [9] [abundance_sigma]: Rate at which abundance changes if process is `abundance`
+    0                    ## [10] [growth_rate_mean]: Ancestral population growth rate at time 0.
+    0.01                 ## [11] [growth_rate_sigma]: Rate at which growth rate changes if process is `rate`
+    1                    ## [12] [lambda_mean]: Ancestral speciation rate at time 0.
+    0.1                  ## [13] [lambda_sigma]: Rate at which speciation rate changes if ClaDS is True.
+    0.1                  ## [14] [alpha]: Rate shift if ClaDS is True
+    1e-05                ## [15] [mutation_rate]: Mutation rate per base per generation
+    10                   ## [16] [sample_size]: Number of samples to draw for calculating genetic diversity
 
 Run 10 simulations:
 
