@@ -1,4 +1,4 @@
-<img src="https://encrypted-tbn0.gstatic.com/images?q=tbn%3AANd9GcRhS8BQMazRfAeRnkBof45N1vbg9oF4l77t2IOAcPGgZlOhNVeh&amp;usqp=CAU" alt="MorphMarket on Twitter: &quot;Panda Pied Male Ball Python by Exotic ..."/>
+![panda pied python](./img/pied.jpg)
 
 # PIED
 A birth/death tree with abundances. Abundance can evolve either as a BM process
