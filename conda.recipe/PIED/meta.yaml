@@ -1,5 +1,5 @@
 package:
-  name: PIED
+  name: pied
   version: "0.0.11"
 
 source:
@@ -7,31 +7,25 @@ source:
   git_tag: master
 
 build:
-  number: 11
+  number: 0
   noarch: python
 
 requirements:
   build:
-    - python
+    - python >=3
     - setuptools
     - msprime
-    - cython
     - numpy
     - pandas
   run:
     - python >=3
     - setuptools
     - ipyparallel
-    - cython
-    - scipy
-    - nbconvert
-    - joblib
-    - jupyter
     - pandas
     - matplotlib
-    - momi
     - msprime
     - cloudpickle
+    - toytree
 
   commands:
     - PIED -v
