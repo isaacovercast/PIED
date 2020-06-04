@@ -70,7 +70,6 @@ class Core(object):
                        ("abundance_sigma", 0.1),
                        ("growth_rate_mean", 0),
                        ("growth_rate_sigma", 0.01),
-                       ("lambda_mean", 1),
                        ("lambda_sigma", 0.1),
                        ("alpha", 0.1),
                        ("mutation_rate", 1e-5),
@@ -146,7 +145,7 @@ class Core(object):
         try:
             ints = ["birth_rate", "ntaxa", "abundance_mean", "sample_size"]
             floats = ["time", "abundance_sigma", "growth_rate_mean", "growth_rate_sigma",\
-                        "lambda_mean", "lambda_sigma", "alpha", "mutation_rate"]
+                        "lambda_sigma", "alpha", "mutation_rate"]
             ## Cast params to correct types
             if param == "project_dir":
                 ## If it already exists then just inform the user that we'll be adding
@@ -162,11 +161,12 @@ class Core(object):
                 if newvalue not in ["taxa", "time"]:
                     raise PIEDError("Bad parameter: `stop_criterion` must "\
                                     + "be one of `taxa` or `time`.")
+                self.paramsdict[param] = newvalue
             elif param == "process":
                 if newvalue not in ["abundance", "rate"]:
                     raise PIEDError("Bad parameter: `process` must be "\
                                     + "`abundance` or `rate`.")
-
+                self.paramsdict[param] = newvalue
             elif param in ints + floats:
                 dtype = float
                 if param in ints:
@@ -182,12 +182,15 @@ class Core(object):
 
     ## Getting parameters header and parameters carves off
     ## the simulation name and the project directory
+    ## Slice off the first two params which are name and project_dir
     def _get_params_header(self):
         return list(self.paramsdict.keys())[2:]
 
 
     def _get_params_values(self):
-        return list(self.paramsdict.values())[2:]
+        ## This is only ever called when writing out to the simout file
+        ## so make str here to handle int/float params
+        return [str(x) for x in list(self.paramsdict.values())[2:]]
 
 
     def set_param(self, param, value, quiet=True):
@@ -418,18 +421,17 @@ class Core(object):
         return tree_list
 
 
-    def _simulate(self, 
-                alpha=0, ClaDS=False, verbose=False):
+    def _simulate(self, verbose=False):
         
-        # Each species has a dictionary of features, these are the default values
+        # Each species has an attribute for each fature in this dictionary.
         #  abundance - Abundance of the species
         #  r - Rate at which abundance changes, can be negative
         #  trait - This is a random trait value that evolves by BM
         #  lambda - Per lineage speciation rate
-        feature_dict = {"abundance":{"sigma":0.1, "zbar_0":50000, "log":True, "dtype":"int"},
-                          "r":{"sigma":0.01, "zbar_0":0, "log":False, "dtype":"float"},
+        feature_dict = {"abundance":{"sigma":self.paramsdict["abundance_sigma"], "zbar_0":self.paramsdict["abundance_mean"], "log":True, "dtype":"int"},
+                          "r":{"sigma":self.paramsdict["growth_rate_sigma"], "zbar_0":self.paramsdict["growth_rate_mean"], "log":False, "dtype":"float"},
                           "trait":{"sigma":2, "zbar_0":0, "log":False, "dtype":"float"},
-                          "lambda_":{"sigma":0.1, "zbar_0":self.paramsdict["birth_rate"], "log":False, "dtype":"float"}
+                          "lambda_":{"sigma":self.paramsdict["lambda_sigma"], "zbar_0":self.paramsdict["birth_rate"], "log":False, "dtype":"float"}
                          }
 
         tre = toytree.tree()
@@ -448,7 +450,7 @@ class Core(object):
             tips = tre.treenode.get_leaves()
 
             # Sample time interval
-            if ClaDS:
+            if self.paramsdict["ClaDS"]:
                 lambs = np.array([tip.lambda_ for tip in tips])
                 # Run a horse race for all lineages, smallest time sampled wins
                 ts = np.random.exponential(lambs)
@@ -488,26 +490,31 @@ class Core(object):
             tips = tre.treenode.get_leaves()
             for x in tips:
                 x.dist += dt
-                if self.paramsdict["process"] == "abundance":
-                    # If 'abundance' log species abundances change via Brownian motion
-                    for fname, fdict in feature_dict.items():
+                for fname, fdict in feature_dict.items():
+                    # Update 'lambda_', 'r' and 'trait', but skip 'abundance'
+                    # if doing the growth rate process.
+                    if self.paramsdict["process"] == "rate" and\
+                        fname == "abundance": continue
+                    elif self.paramsdict["ClaDS"] == True and\
+                        fname == "lambda_":
+                        # Lambda gets treated special if ClaDS
+                        x.add_feature(fname, _bm(getattr(x, fname),
+                                                fdict["sigma"],
+                                                dt=dt,
+                                                log=fdict["log"],
+                                                dtype=fdict["dtype"],
+                                                ClaDS=True,
+                                                alpha=self.paramsdict["alpha"]))
+                    else:
                         x.add_feature(fname, _bm(getattr(x, fname),
                                                 fdict["sigma"],
                                                 dt=dt,
                                                 log=fdict["log"],
                                                 dtype=fdict["dtype"]))
-                else:
-                    for fname, fdict in feature_dict.items():
-                        # Update 'lambda_', 'r' and 'trait', but skip 'abundance'
-                        #import pdb; pdb.set_trace()
-                        if fname == "abundance": continue
-                        x.add_feature(fname, _bm(getattr(x, fname),
-                                                fdict["sigma"],
-                                                dt=dt,
-                                                log=fdict["log"],
-                                                dtype=fdict["dtype"]))
-                        # Apply the population size change
-                        x.abundance = int(x.abundance * (np.exp(x.r**dt)))
+
+                if self.paramsdict["process"] == "rate":
+                    # Apply the population size change
+                    x.abundance = int(x.abundance * (np.exp(x.r*dt)))
 
             # Check boundary conditions for abundance and lambda
             for x in tips[:]:
@@ -548,9 +555,15 @@ class Core(object):
                     print("Birth events {}".format(evnts))
                     print("Extinctions (per birth) {} ({})".format(ext, ext/evnts))
                 tre._coords.update()
+                ## Relabel tips to have reasonable names
                 for i, t in enumerate(tips[::-1]):
                     t.name = "r{}".format(i)
-                return tre
+                res = self._get_params_values()
+                dat = ["{}:{}:{}:{}".format(x.name, x.abundance, x.r, x.lambda_) for x in tips]
+                dat = ",".join(dat)
+                res.append(dat)
+                res.append(tre.write())
+                return res
 
     
     def simulate(self, nsims=1, ipyclient=None, quiet=False, verbose=False, force=False):
@@ -587,18 +600,22 @@ class Core(object):
 
         simfile = os.path.join(self.paramsdict["project_dir"], "{}-SIMOUT.csv".format(self.name))
         ## Open output file. If force then overwrite existing, otherwise just append.
-        mode = 'a'
         if force:
             ## Prevent from shooting yourself in the foot with -f
             try:
-                mode = 'w'
                 os.rename(simfile, simfile+".bak")
             except FileNotFoundError:
                 ## If the simfile doesn't exist catch the error and move on
                 pass
 
-        with open(simfile, mode) as output:
-            output.write("\n".join([x.write() for x in result_list]) + "\n")
+        if (not os.path.exists(simfile)) or force:
+            params = self._get_params_header()
+            params.append("tree")
+            with open(simfile, 'w') as simout:
+                simout.write(" ".join(params) + "\n")
+
+        with open(simfile, 'a') as output:
+            output.write("\n".join([" ".join(x) for x in result_list]) + "\n")
 
 
 def serial_simulate(model, nsims=1, quiet=False, verbose=False):
@@ -609,21 +626,21 @@ def serial_simulate(model, nsims=1, quiet=False, verbose=False):
     return res
 
 ## Brownian motion function
-def _bm(mean, var, dt, log=True, dtype="int"):
+def _bm(mean, sigma, dt, log=True, dtype="int", ClaDS=False, alpha=0):
     ret = 0
     mean = np.float(mean)
     if dtype == "int":
         # Avoid log(1)
         if not log or mean <= 1:
-            ret = np.int(np.round(np.random.normal(mean, var*dt)))
+            ret = np.int(np.round(np.random.normal(mean, sigma*dt)))
         else:
-            try:
-                ret = np.int(np.round(np.exp(np.random.normal(np.log(mean), var*dt))))
-            except:
-                import pdb; pdb.set_trace()
+            ret = np.int(np.round(np.exp(np.random.normal(np.log(mean), sigma*dt))))
 
     elif dtype == "float":
-        ret = np.random.normal(mean, var*dt)
+        if ClaDS == True:
+            ret = np.random.lognormal(np.log(mean*alpha), sigma*dt)
+        else:
+            ret = np.random.normal(mean, sigma*dt)
     else:
        raise Exception("bm dtype must be 'int' or 'float'. You put: {}".format(dtype))
     return ret
@@ -782,7 +799,6 @@ PARAMS = {
     "abundance_sigma" : "Rate at which abundance changes if process is `abundance`",\
     "growth_rate_mean" : "Ancestral population growth rate at time 0.",\
     "growth_rate_sigma" : "Rate at which growth rate changes if process is `rate`",\
-    "lambda_mean" : "Ancestral speciation rate at time 0.",\
     "lambda_sigma" : "Rate at which speciation rate changes if ClaDS is True.",\
     "alpha" : "Rate shift if ClaDS is True",\
     "mutation_rate" : "Mutation rate per base per generation",\
