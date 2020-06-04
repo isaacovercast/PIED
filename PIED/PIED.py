@@ -559,6 +559,7 @@ class Core(object):
                 for i, t in enumerate(tips[::-1]):
                     t.name = "r{}".format(i)
                 res = self._get_params_values()
+                res.append(str(ext/evnts))
                 dat = ["{}:{}:{}:{}".format(x.name, x.abundance, x.r, x.lambda_) for x in tips]
                 dat = ",".join(dat)
                 res.append(dat)
@@ -610,6 +611,8 @@ class Core(object):
 
         if (not os.path.exists(simfile)) or force:
             params = self._get_params_header()
+            params.append("ext_rate")
+            params.append("data")
             params.append("tree")
             with open(simfile, 'w') as simout:
                 simout.write(" ".join(params) + "\n")
