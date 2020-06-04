@@ -4,8 +4,15 @@
 A birth/death process with abundances and genetic diversity at the tips. 
 Abundance can evolve either as a BM process with random fission at speciation
 events, or the rate of change (r) of abundance can evolve as BM in which case
-abundance (n) changes through time (dt) via `n * exp(r)\*\*dt`. Speciation rate
+abundance (n) changes through time (dt) via `n * exp(r\*dt)`. Speciation rate
 can also shift at branching events in the manner of ClaDS. 
+
+## Installation
+
+* Install conda for python3
+* `conda create -n PIED python=3.7`
+* `conda activate PIED`
+* `conda install -c conda-forge -c iovercast pied`
 
 ## Usage
 Create a params file:
