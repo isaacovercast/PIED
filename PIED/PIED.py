@@ -72,6 +72,7 @@ class Core(object):
                        ("growth_rate_sigma", 0.01),
                        ("lambda_sigma", 0.1),
                        ("alpha", 0.1),
+                       ("sequence_length", 500),
                        ("mutation_rate", 1e-5),
                        ("sample_size", 10)
         ])
@@ -143,7 +144,7 @@ class Core(object):
         ## TODO: This should actually check the values and make sure they make sense
         ## FIXME: PIED parameters need to be updated here.
         try:
-            ints = ["birth_rate", "ntaxa", "abundance_mean", "sample_size"]
+            ints = ["birth_rate", "ntaxa", "abundance_mean", "sequence_length", "sample_size"]
             floats = ["time", "abundance_sigma", "growth_rate_mean", "growth_rate_sigma",\
                         "lambda_sigma", "alpha", "mutation_rate"]
             ## Cast params to correct types
@@ -558,9 +559,15 @@ class Core(object):
                 ## Relabel tips to have reasonable names
                 for i, t in enumerate(tips[::-1]):
                     t.name = "r{}".format(i)
+                    t.pi = nucleotide_diversity(self.paramsdict, t)
+                ## Build the output list to return which will include
+                ##  * parameters of the model
+                ##  * calculated extinction rate
+                ##  * All the data at the tips including abundance, pop growth rate, and speciation rate
+                ##  * The newick formatted tree
                 res = self._get_params_values()
                 res.append(str(ext/evnts))
-                dat = ["{}:{}:{}:{}".format(x.name, x.abundance, x.r, x.lambda_) for x in tips]
+                dat = ["{}:{}:{}:{}:{}".format(x.name, x.abundance, x.pi, x.r, x.lambda_) for x in tips]
                 dat = ",".join(dat)
                 res.append(dat)
                 res.append(tre.write())
@@ -627,6 +634,18 @@ def serial_simulate(model, nsims=1, quiet=False, verbose=False):
     res = model.serial_simulate(nsims, quiet=quiet, verbose=verbose)
     LOGGER.debug("Leaving sim - {} on pid {}".format(model, os.getpid()))
     return res
+
+
+###########################
+## Random utility functions
+###########################
+def nucleotide_diversity(paramsdict, node):
+    ts = msprime.simulate(sample_size=paramsdict["sample_size"],
+                            Ne=node.abundance,
+                            length=paramsdict["sequence_length"],
+                            mutation_rate=paramsdict["mutation_rate"])
+    return ts.diversity()
+
 
 ## Brownian motion function
 def _bm(mean, sigma, dt, log=True, dtype="int", ClaDS=False, alpha=0):
@@ -804,6 +823,7 @@ PARAMS = {
     "growth_rate_sigma" : "Rate at which growth rate changes if process is `rate`",\
     "lambda_sigma" : "Rate at which speciation rate changes if ClaDS is True.",\
     "alpha" : "Rate shift if ClaDS is True",\
+    "sequence_length" : "Length of the genomic region simulated, in base pairs.",\
     "mutation_rate" : "Mutation rate per base per generation",\
     "sample_size" : "Number of samples to draw for calculating genetic diversity"
 }
