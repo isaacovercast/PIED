@@ -557,16 +557,16 @@ class Core(object):
                     print("Extinctions (per birth) {} ({})".format(ext, ext/evnts))
                 tre._coords.update()
                 ## Relabel tips to have reasonable names
-                for i, t in enumerate(tips[::-1]):
-                    t.name = "r{}".format(i)
-                    t.pi = nucleotide_diversity(self.paramsdict, t)
+                for i, tip in enumerate(tips[::-1]):
+                    tip.name = "r{}".format(i)
+                    tip.pi = nucleotide_diversity(self.paramsdict, tip)
                 ## Build the output list to return which will include
                 ##  * parameters of the model
-                ##  * calculated extinction rate
+                ##  * observed ntaxa and time, and calculated extinction rate
                 ##  * All the data at the tips including abundance, pop growth rate, and speciation rate
                 ##  * The newick formatted tree
                 res = self._get_params_values()
-                res.append(str(ext/evnts))
+                res.extend([str(len(tips)), str(t), str(ext/evnts)])
                 dat = ["{}:{}:{}:{}:{}".format(x.name, x.abundance, x.pi, x.r, x.lambda_) for x in tips]
                 dat = ",".join(dat)
                 res.append(dat)
@@ -618,7 +618,7 @@ class Core(object):
 
         if (not os.path.exists(simfile)) or force:
             params = self._get_params_header()
-            params.append("ext_rate")
+            params.extend(["obs_ntaxa", "obs_time", "ext_rate"])
             params.append("data")
             params.append("tree")
             with open(simfile, 'w') as simout:
