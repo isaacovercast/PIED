@@ -89,5 +89,4 @@ The default CLI will parse a handful of universally useful arguments:
 
 Long form arguments:
 
-* `--ipcluster <cluster_id>`    Pass in a cluster ID for a running up ipcluster
-    parser.add_argument("--ipcluster", metavar="ipcluster", dest="ipcluster",
+* `--ipcluster <cluster_id>`    Pass in the cluster ID of a running ipcluster instance
