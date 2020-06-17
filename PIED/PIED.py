@@ -144,8 +144,8 @@ class Core(object):
         ## TODO: This should actually check the values and make sure they make sense
         ## FIXME: PIED parameters need to be updated here.
         try:
-            ints = ["birth_rate", "ntaxa", "abundance_mean", "sequence_length", "sample_size"]
-            floats = ["time", "abundance_sigma", "growth_rate_mean", "growth_rate_sigma",\
+            ints = ["ntaxa", "abundance_mean", "sequence_length", "sample_size"]
+            floats = ["birth_rate", "time", "abundance_sigma", "growth_rate_mean", "growth_rate_sigma",\
                         "ClaDS_sigma", "alpha", "mutation_rate"]
             ## Cast params to correct types
             if param == "project_dir":
