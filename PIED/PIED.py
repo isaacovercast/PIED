@@ -70,7 +70,7 @@ class Core(object):
                        ("abundance_sigma", 0.1),
                        ("growth_rate_mean", 0),
                        ("growth_rate_sigma", 0.01),
-                       ("lambda_sigma", 0.1),
+                       ("ClaDS_sigma", 0.1),
                        ("alpha", 0.1),
                        ("sequence_length", 500),
                        ("mutation_rate", 1e-5),
@@ -146,7 +146,7 @@ class Core(object):
         try:
             ints = ["birth_rate", "ntaxa", "abundance_mean", "sequence_length", "sample_size"]
             floats = ["time", "abundance_sigma", "growth_rate_mean", "growth_rate_sigma",\
-                        "lambda_sigma", "alpha", "mutation_rate"]
+                        "ClaDS_sigma", "alpha", "mutation_rate"]
             ## Cast params to correct types
             if param == "project_dir":
                 ## If it already exists then just inform the user that we'll be adding
@@ -432,7 +432,7 @@ class Core(object):
         feature_dict = {"abundance":{"sigma":self.paramsdict["abundance_sigma"], "zbar_0":self.paramsdict["abundance_mean"], "log":True, "dtype":"int"},
                           "r":{"sigma":self.paramsdict["growth_rate_sigma"], "zbar_0":self.paramsdict["growth_rate_mean"], "log":False, "dtype":"float"},
                           "trait":{"sigma":2, "zbar_0":0, "log":False, "dtype":"float"},
-                          "lambda_":{"sigma":self.paramsdict["lambda_sigma"], "zbar_0":self.paramsdict["birth_rate"], "log":False, "dtype":"float"}
+                          "lambda_":{"sigma":self.paramsdict["ClaDS_sigma"], "zbar_0":self.paramsdict["birth_rate"], "log":False, "dtype":"float"}
                          }
 
         tre = toytree.tree()
@@ -821,7 +821,7 @@ PARAMS = {
     "abundance_sigma" : "Rate at which abundance changes if process is `abundance`",\
     "growth_rate_mean" : "Ancestral population growth rate at time 0.",\
     "growth_rate_sigma" : "Rate at which growth rate changes if process is `rate`",\
-    "lambda_sigma" : "Rate at which speciation rate changes if ClaDS is True.",\
+    "ClaDS_sigma" : "Rate at which speciation rate changes if ClaDS is True.",\
     "alpha" : "Rate shift if ClaDS is True",\
     "sequence_length" : "Length of the genomic region simulated, in base pairs.",\
     "mutation_rate" : "Mutation rate per base per generation",\
