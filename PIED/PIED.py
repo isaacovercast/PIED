@@ -71,7 +71,7 @@ class Core(object):
                        ("growth_rate_mean", 0),
                        ("growth_rate_sigma", 0.01),
                        ("ClaDS_sigma", 0.1),
-                       ("alpha", 0.1),
+                       ("ClaDS_alpha", 0.1),
                        ("sequence_length", 500),
                        ("mutation_rate", 1e-5),
                        ("sample_size", 10)
@@ -146,7 +146,7 @@ class Core(object):
         try:
             ints = ["ntaxa", "abundance_mean", "sequence_length", "sample_size"]
             floats = ["birth_rate", "time", "abundance_sigma", "growth_rate_mean", "growth_rate_sigma",\
-                        "ClaDS_sigma", "alpha", "mutation_rate"]
+                        "ClaDS_sigma", "ClaDS_alpha", "mutation_rate"]
             ## Cast params to correct types
             if param == "project_dir":
                 ## If it already exists then just inform the user that we'll be adding
@@ -213,7 +213,7 @@ class Core(object):
             raise PIEDError("Bad param/value {}/{}".format(param, value))
 
 
-    def get_params(self):
+    def get_params(self, verbose=False):
         """
         A convenience function for getting nicely formatted params in API mode.
 
@@ -222,6 +222,7 @@ class Core(object):
         tf = tempfile.NamedTemporaryFile()
         self.write_params(outfile=tf.name, force=True)
         dat = open(tf.name).read()
+        if verbose: print(dat)
         return dat
 
 
@@ -407,7 +408,8 @@ class Core(object):
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
                 if not quiet: progressbar(nsims, i, printstr.format(elapsed))
 
-                res = self._simulate()
+                ## Returns the tree and the formatted results
+                _, res = self._simulate()
                 tree_list.append(res)
 
             except KeyboardInterrupt as inst:
@@ -505,7 +507,7 @@ class Core(object):
                                                 log=fdict["log"],
                                                 dtype=fdict["dtype"],
                                                 ClaDS=True,
-                                                alpha=self.paramsdict["alpha"]))
+                                                ClaDS_alpha=self.paramsdict["ClaDS_alpha"]))
                     else:
                         x.add_feature(fname, _bm(getattr(x, fname),
                                                 fdict["sigma"],
@@ -571,7 +573,7 @@ class Core(object):
                 dat = ",".join(dat)
                 res.append(dat)
                 res.append(tre.write())
-                return res
+                return tre, res
 
     
     def simulate(self, nsims=1, ipyclient=None, quiet=False, verbose=False, force=False):
@@ -644,11 +646,12 @@ def nucleotide_diversity(paramsdict, node):
                             Ne=node.abundance,
                             length=paramsdict["sequence_length"],
                             mutation_rate=paramsdict["mutation_rate"])
+    ## By default tskit.diversity() is per base
     return ts.diversity()
 
 
 ## Brownian motion function
-def _bm(mean, sigma, dt, log=True, dtype="int", ClaDS=False, alpha=0):
+def _bm(mean, sigma, dt, log=True, dtype="int", ClaDS=False, ClaDS_alpha=0):
     ret = 0
     mean = np.float(mean)
     if dtype == "int":
@@ -660,7 +663,7 @@ def _bm(mean, sigma, dt, log=True, dtype="int", ClaDS=False, alpha=0):
 
     elif dtype == "float":
         if ClaDS == True:
-            ret = np.random.lognormal(np.log(mean*alpha), sigma*dt)
+            ret = np.random.lognormal(np.log(mean*ClaDS_alpha), sigma*dt)
         else:
             ret = np.random.normal(mean, sigma*dt)
     else:
@@ -822,7 +825,7 @@ PARAMS = {
     "growth_rate_mean" : "Ancestral population growth rate at time 0.",\
     "growth_rate_sigma" : "Rate at which growth rate changes if process is `rate`",\
     "ClaDS_sigma" : "Rate at which speciation rate changes if ClaDS is True.",\
-    "alpha" : "Rate shift if ClaDS is True",\
+    "ClaDS_alpha" : "Rate shift if ClaDS is True",\
     "sequence_length" : "Length of the genomic region simulated, in base pairs.",\
     "mutation_rate" : "Mutation rate per base per generation",\
     "sample_size" : "Number of samples to draw for calculating genetic diversity"
