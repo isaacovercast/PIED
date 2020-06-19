@@ -147,7 +147,7 @@ class Core(object):
         try:
             ints = ["ntaxa", "abundance_mean", "sequence_length", "sample_size"]
             floats = ["birth_rate", "time", "abundance_sigma", "growth_rate_mean", "growth_rate_sigma",\
-                        "ClaDS_sigma", "ClaDS_alpha", "mutation_rate"]
+                        "ClaDS_sigma", "mutation_rate"]
             ## Cast params to correct types
             if param == "project_dir":
                 ## If it already exists then just inform the user that we'll be adding
@@ -174,8 +174,16 @@ class Core(object):
                     self.paramsdict[param] = ast.literal_eval(newvalue)
                 except ValueError:
                     raise PIEDError("Bad parameter: `ClaDS` must be `True` or "\
-                                    + "`False`. You put: {}".format(newvalue))
-    
+                                    + "`False`.")
+            elif param == "ClaDS_alpha":
+                tup = tuplecheck(newvalue, dtype=float)
+                msg = "Bad parameter: `ClaDS_alpha` must be strictly positive."
+                if isinstance(tup, tuple):
+                    if tup[0] <= 0:
+                        raise PIEDError(msg)
+                elif tup <= 0:
+                        raise PIEDError(msg)
+                self.paramsdict[param] = tup
             elif param in ints + floats:
                 dtype = float
                 if param in ints:
