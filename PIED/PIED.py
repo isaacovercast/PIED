@@ -636,7 +636,7 @@ class Core(object):
 
         if (not os.path.exists(simfile)) or force:
             params = self._get_params_header()
-            params.extend(["obs_ntaxa", "obs_time", "ext_rate"])
+            params.extend(["obs_ntaxa", "obs_time", "turnover_rate"])
             params.append("data")
             params.append("tree")
             with open(simfile, 'w') as simout:
