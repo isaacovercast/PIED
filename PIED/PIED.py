@@ -1,3 +1,4 @@
+import ast
 import datetime
 import json
 import logging
@@ -168,6 +169,13 @@ class Core(object):
                     raise PIEDError("Bad parameter: `process` must be "\
                                     + "`abundance` or `rate`.")
                 self.paramsdict[param] = newvalue
+            elif param == "ClaDS":
+                try:
+                    self.paramsdict[param] = ast.literal_eval(newvalue)
+                except ValueError:
+                    raise PIEDError("Bad parameter: `ClaDS` must be `True` or "\
+                                    + "`False`. You put: {}".format(newvalue))
+    
             elif param in ints + floats:
                 dtype = float
                 if param in ints:
@@ -501,16 +509,16 @@ class Core(object):
                     elif self.paramsdict["ClaDS"] == True and\
                         fname == "lambda_":
                         # Lambda gets treated special if ClaDS
-                        x.add_feature(fname, _bm(getattr(x, fname),
-                                                fdict["sigma"],
+                        x.add_feature(fname, _bm(mean=getattr(x, fname),
+                                                sigma=fdict["sigma"],
                                                 dt=dt,
                                                 log=fdict["log"],
                                                 dtype=fdict["dtype"],
                                                 ClaDS=True,
                                                 ClaDS_alpha=self.paramsdict["ClaDS_alpha"]))
                     else:
-                        x.add_feature(fname, _bm(getattr(x, fname),
-                                                fdict["sigma"],
+                        x.add_feature(fname, _bm(mean=getattr(x, fname),
+                                                sigma=fdict["sigma"],
                                                 dt=dt,
                                                 log=fdict["log"],
                                                 dtype=fdict["dtype"]))
@@ -651,7 +659,7 @@ def nucleotide_diversity(paramsdict, node):
 
 
 ## Brownian motion function
-def _bm(mean, sigma, dt, log=True, dtype="int", ClaDS=False, ClaDS_alpha=0):
+def _bm(mean, sigma, dt, log=True, dtype="int", ClaDS=False, ClaDS_alpha=1):
     ret = 0
     mean = np.float(mean)
     if dtype == "int":
@@ -663,7 +671,7 @@ def _bm(mean, sigma, dt, log=True, dtype="int", ClaDS=False, ClaDS_alpha=0):
 
     elif dtype == "float":
         if ClaDS == True:
-            ret = np.random.lognormal(np.log(mean*ClaDS_alpha), sigma*dt)
+            ret = np.random.lognormal(np.log(mean*ClaDS_alpha), sigma)
         else:
             ret = np.random.normal(mean, sigma*dt)
     else:
