@@ -89,6 +89,7 @@ class Core(object):
 
         ## elite hackers only internal dictionary, normally you shouldn't mess with this
         self._hackersonly = dict([
+                        ("max_theta", 0.7),
         ])
 
         ## The empirical msfs
@@ -404,9 +405,11 @@ class Core(object):
                 else:
                     result_list.extend(parallel_jobs[result].result())
             except Exception as inst:
-                LOGGER.error("Caught a failed simulation - {}".format(inst))
-                ## Don't let one bad apple spoin the bunch,
+                LOGGER.error("Failed inside parallel_simulate -\n{}".format(inst))
+                ## Don't let one bad apple spoil the bunch,
                 ## so keep trying through the rest of the asyncs
+        if len(faildict):
+            print("\n   One or more simulations failed. Check PIED_log.txt for details.\n")
         LOGGER.debug(faildict)
 
         return result_list
@@ -433,7 +436,7 @@ class Core(object):
                 break
             except Exception as inst:
                 LOGGER.debug("Simulation failed: {}".format(inst))
-                raise PIEDError("Failed inside serial_simulate: {}".format(inst))
+                raise PIEDError("Failed inside serial_simulate:\n{}".format(inst))
 
         if not quiet: progressbar(100, 100, " Finished {} simulations in   {}\n".format(i+1, elapsed))
 
@@ -574,10 +577,21 @@ class Core(object):
                     print("Birth events {}".format(evnts))
                     print("Extinctions (per birth) {} ({})".format(ext, ext/evnts))
                 tre._coords.update()
+
+                ## Test for 'reasonable' theta values. If theta gets too large
+                ## two things happen: biologically meaningless pi values, and
+                ## runtime of msprime _explodes_.
+                thetas = np.array([x.abundance * self.paramsdict["mutation_rate"] for x in tips])
+                if np.any(thetas > self._hackersonly["max_theta"]):
+                    raise PIEDError(MAX_THETA_ERROR.format(self._hackersonly["max_theta"],\
+                                                            np.max(thetas)))
+
                 ## Relabel tips to have reasonable names
                 for i, tip in enumerate(tips[::-1]):
                     tip.name = "r{}".format(i)
-                    tip.pi = nucleotide_diversity(self.paramsdict, tip)
+                    print("{} {}".format(tip.name, tip.abundance))
+                    tip.pi = nucleotide_diversity(self.paramsdict, node=tip)
+                    print(tip.pi)
                 ## Build the output list to return which will include
                 ##  * parameters of the model
                 ##  * observed ntaxa and time, and calculated extinction rate
@@ -666,18 +680,68 @@ def nucleotide_diversity(paramsdict, node):
     return ts.diversity()
 
 
+def nucleotide_diversity_ILS(paramsdict, tree, debug=False):
+    generation_time = 1
+    population_configurations = []
+    demographic_events = []
+    msp_idx = 0
+    ## Traverse the tree generating population configurations for tips and
+    ## nodes. Kind of annoying.
+    for i, node in enumerate(tree.traverse("postorder")):
+        children = node.get_descendants()
+        if len(children) == 0:
+            pop = msprime.PopulationConfiguration(sample_size=5, initial_size=node.abundance)
+            population_configurations.append(pop)
+            node.add_feature("msprime_idx", msp_idx)
+            if debug: print("I'm a tip {} - {}".format(node.idx, node.msprime_idx))
+            msp_idx += 1
+        else:
+            chidx = [c.msprime_idx for c in children]
+            gens = node.height * 1e6 / generation_time
+            mig = msprime.MassMigration(time=gens, source=chidx[0], dest=chidx[1])
+            demographic_events.append(mig)
+            node.add_feature("msprime_idx", chidx[1])
+            if debug: print("I'm a node {} ({}) [gens {}]- {}".format(node.idx, node.msprime_idx, gens,\
+                                                            " ".join(map(lambda x: str(x), chidx))))
+    ## Sort the demographic events
+    demographic_events = sorted(demographic_events, key=lambda x: x.time)
+
+    if debug:
+        dd = msprime.DemographyDebugger(
+            population_configurations=population_configurations,
+            demographic_events=demographic_events)
+        dd.print_history()
+
+    ## Do the simulation
+    ts = msprime.simulate(
+        population_configurations=population_configurations,
+        demographic_events=demographic_events,
+        length=paramsdict["sequence_length"],
+        mutation_rate=paramsdict["mutation_rate"])
+
+    pop_inds = {}
+    for pop in ts.populations():
+        pop_inds[pop.id] = ts.samples(pop.id)
+    pis = ts.diversity(list(pop_inds.values()))
+
+    for pi, leaf in zip(pis, tree.get_leaves()):
+        leaf.pi = pi
+
+    return ts, tree
+
+
 ## Brownian motion function
 def _bm(mean, sigma, dt, log=True, dtype="int", ClaDS=False, ClaDS_alpha=1):
     ret = 0
     mean = np.float(mean)
-    if dtype == "int":
+    if dtype in ["int", int]:
         # Avoid log(1)
         if not log or mean <= 1:
             ret = np.int(np.round(np.random.normal(mean, sigma*dt)))
         else:
             ret = np.int(np.round(np.exp(np.random.normal(np.log(mean), sigma*dt))))
 
-    elif dtype == "float":
+    elif dtype in ["float", float]:
         if ClaDS == True:
             ret = np.random.lognormal(np.log(mean*ClaDS_alpha), sigma)
         else:
@@ -876,6 +940,17 @@ REQUIRE_NAME = """\
     short string with no special characters, i.e., not a path (no \"/\" characters).
     If you need a suggestion, name it after the location you're working on.
     """
+
+MAX_THETA_ERROR = """\
+    One or more Theta values has exceeded the max theta cutoff: {}
+
+    Your max theta: {}
+
+    This can happen if mutation rate is too high or if Ne gets too large, which
+    can be a function of abundances wandering too fast in the 'abundance'
+    process, or (more likely) growth rate getting too big in the 'rate' process.
+    """ 
+
 
 if __name__ == "__main__":
     pass
