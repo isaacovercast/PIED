@@ -476,8 +476,8 @@ class Core(object):
                 lambs = np.array([tip.lambda_ for tip in tips])
                 # Run a horse race for all lineages, smallest time sampled wins
                 ts = np.random.exponential(lambs)
-                idx = np.where(ts == ts.min())[0][0]
-                dt = ts.min()
+                idx = np.where(ts == ts.max())[0][0]
+                dt = ts.max()
                 sp = tips[idx]
             else:
                 # This isn't strictly necessary, because if the rate shift model
@@ -589,9 +589,7 @@ class Core(object):
                 ## Relabel tips to have reasonable names
                 for i, tip in enumerate(tips[::-1]):
                     tip.name = "r{}".format(i)
-                    print("{} {}".format(tip.name, tip.abundance))
                     tip.pi = nucleotide_diversity(self.paramsdict, node=tip)
-                    print(tip.pi)
                 ## Build the output list to return which will include
                 ##  * parameters of the model
                 ##  * observed ntaxa and time, and calculated extinction rate
@@ -651,7 +649,7 @@ class Core(object):
         if (not os.path.exists(simfile)) or force:
             params = self._get_params_header()
             params.extend(["obs_ntaxa", "obs_time", "turnover_rate"])
-            params.append("data")
+            params.append("data(name:abundance:pi:r:lambda)")
             params.append("tree")
             with open(simfile, 'w') as simout:
                 simout.write(" ".join(params) + "\n")
