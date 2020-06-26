@@ -409,6 +409,7 @@ class Core(object):
                 ## Don't let one bad apple spoil the bunch,
                 ## so keep trying through the rest of the asyncs
         if len(faildict):
+            print(faildict)
             print("\n   One or more simulations failed. Check PIED_log.txt for details.\n")
         LOGGER.debug(faildict)
 
@@ -445,7 +446,7 @@ class Core(object):
 
     def _simulate(self, verbose=False):
         
-        # Each species has an attribute for each fature in this dictionary.
+        # Each species has an attribute for each feature in this dictionary.
         #  abundance - Abundance of the species
         #  r - Rate at which abundance changes, can be negative
         #  trait - This is a random trait value that evolves by BM
@@ -453,12 +454,14 @@ class Core(object):
         feature_dict = {"abundance":{"sigma":self.paramsdict["abundance_sigma"], "zbar_0":self.paramsdict["abundance_mean"], "log":True, "dtype":"int"},
                           "r":{"sigma":self.paramsdict["growth_rate_sigma"], "zbar_0":self.paramsdict["growth_rate_mean"], "log":False, "dtype":"float"},
                           "trait":{"sigma":2, "zbar_0":0, "log":False, "dtype":"float"},
-                          "lambda_":{"sigma":self.paramsdict["ClaDS_sigma"], "zbar_0":self.paramsdict["birth_rate"], "log":False, "dtype":"float"}
                          }
 
         tre = toytree.tree()
+        ## Items in the feature_dict all evolve via BM in most cases
         for fname, fdict in feature_dict.items():
             tre.treenode.add_feature(fname, fdict["zbar_0"])
+        ## Add the default lambda_ which is only used in ClaDS
+        tre.treenode.add_feature("lambda_", self.paramsdict["birth_rate"])
 
         taxa_stop = self.paramsdict["ntaxa"]
         time_stop = self.paramsdict["time"]
@@ -475,9 +478,11 @@ class Core(object):
             if self.paramsdict["ClaDS"]:
                 lambs = np.array([tip.lambda_ for tip in tips])
                 # Run a horse race for all lineages, smallest time sampled wins
-                ts = np.random.exponential(lambs)
-                idx = np.where(ts == ts.max())[0][0]
-                dt = ts.max()
+                # This is exactly equal to the way ClaDS does it, this way makes
+                # more sense to me. See jupyter-notebooks/misc_util.ipynb.
+                ts = np.random.exponential(1/lambs)
+                idx = np.where(ts == ts.min())[0][0]
+                dt = ts.min()
                 sp = tips[idx]
             else:
                 # This isn't strictly necessary, because if the rate shift model
@@ -501,10 +506,17 @@ class Core(object):
                 sp.abundance = 2
                 abund = 1
 
+            ## Set new species features
             for c in [c1, c2]:
-                for fname, fdict in feature_dict.items():
-                    c.add_feature(fname, fdict["zbar_0"])
-                
+                c.r = sp.r
+                c.trait = sp.trait
+                if self.paramsdict["ClaDS"]:
+                    c.lambda_ = np.random.lognormal(np.log(sp.lambda_\
+                                                     * self.paramsdict["ClaDS_alpha"]),\
+                                                       self.paramsdict["ClaDS_sigma"])
+                else:
+                    c.lambda_ = sp.lambda_
+
             c1.add_feature("abundance", abund)
             c2.add_feature("abundance", sp.abundance-abund)
 
@@ -513,20 +525,10 @@ class Core(object):
             for x in tips:
                 x.dist += dt
                 for fname, fdict in feature_dict.items():
-                    # Update 'lambda_', 'r' and 'trait', but skip 'abundance'
+                    # Update 'r' and 'trait', but skip 'abundance'
                     # if doing the growth rate process.
                     if self.paramsdict["process"] == "rate" and\
                         fname == "abundance": continue
-                    elif self.paramsdict["ClaDS"] == True and\
-                        fname == "lambda_":
-                        # Lambda gets treated special if ClaDS
-                        x.add_feature(fname, _bm(mean=getattr(x, fname),
-                                                sigma=fdict["sigma"],
-                                                dt=dt,
-                                                log=fdict["log"],
-                                                dtype=fdict["dtype"],
-                                                ClaDS=True,
-                                                ClaDS_alpha=self.paramsdict["ClaDS_alpha"]))
                     else:
                         x.add_feature(fname, _bm(mean=getattr(x, fname),
                                                 sigma=fdict["sigma"],
@@ -536,10 +538,13 @@ class Core(object):
 
                 if self.paramsdict["process"] == "rate":
                     # Apply the population size change
-                    x.abundance = int(x.abundance * (np.exp(x.r*dt)))
+                    try:
+                        x.abundance = int(x.abundance * (np.exp(x.r*dt)))
+                    except Exception as inst:
+                        raise PIEDError("Abundance is too big: {}".format(x.abundance))
 
             # Check boundary conditions for abundance and lambda
-            for x in tips[:]:
+            for x in tips:
                 # Check extinction and prune out extinct and any resulting hanging branches
                 # If you're the only individual left, you have nobody to mate with so you die.
                 if x.abundance <= 1:
@@ -729,7 +734,7 @@ def nucleotide_diversity_ILS(paramsdict, tree, debug=False):
 
 
 ## Brownian motion function
-def _bm(mean, sigma, dt, log=True, dtype="int", ClaDS=False, ClaDS_alpha=1):
+def _bm(mean, sigma, dt, log=True, dtype="int"):
     ret = 0
     mean = np.float(mean)
     if dtype in ["int", int]:
@@ -740,10 +745,7 @@ def _bm(mean, sigma, dt, log=True, dtype="int", ClaDS=False, ClaDS_alpha=1):
             ret = np.int(np.round(np.exp(np.random.normal(np.log(mean), sigma*dt))))
 
     elif dtype in ["float", float]:
-        if ClaDS == True:
-            ret = np.random.lognormal(np.log(mean*ClaDS_alpha), sigma)
-        else:
-            ret = np.random.normal(mean, sigma*dt)
+        ret = np.random.normal(mean, sigma*dt)
     else:
        raise Exception("bm dtype must be 'int' or 'float'. You put: {}".format(dtype))
     return ret
