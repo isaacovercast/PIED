@@ -159,17 +159,26 @@ def set_params(data, param, newvalue, quiet=True):
     return data
 
 
-def _load_sims(sims, sep=" "):
+def load_sims(sims, sep=" "):
     """
     Load simulations either from a dataframe or from a file.
     """
     if isinstance(sims, str):
         sim_df = pd.read_csv(sims, sep=sep, header=0)
-    elif isinstance(sims, pd.DataFrame):
-        sim_df = sims
+        # Get the nicely formatted params and stats
+        # Carve off the last two elements which are data and the tree
+        params_df = sim_df[sim_df.columns[:-2]]
+
+        sims = []
+        for rec in sim_df["data(name:abundance:pi:r:lambda)"]:
+        # split the records for each species, separated by ','
+            dat = rec.split(",")
+            dat = {x:{"abundance":int(y), "pi":float(z), "r":float(aa), "lambda_":float(bb)} for x, y, z, aa, bb in map(lambda x: x.split(":"), dat)}
+            sims.append(dat)
+        dat_df = pd.DataFrame(sims)
     else:
         raise PIEDError("Input simulations not understood. Must be a file name or a pandas DataFrame")
-    return sim_df
+    return params_df, dat_df
 
 
 ## Error messages
