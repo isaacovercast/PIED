@@ -26,6 +26,7 @@ with warnings.catch_warnings(record=True) as w:
 
 ## FIXME: If need be import the class from the main module
 from .PIED import Core
+from .ClaDS import ClaDS
 from .util import *
 
 ## FIXME: If need be import modules that raise annoying warnings here
