@@ -146,9 +146,6 @@ class Core(object):
         ## TODO: This should actually check the values and make sure they make sense
         ## FIXME: PIED parameters need to be updated here.
         try:
-            ints = ["ntaxa", "abundance_mean", "sequence_length", "sample_size"]
-            floats = ["birth_rate", "time", "abundance_sigma", "growth_rate_mean", "growth_rate_sigma",\
-                        "ClaDS_sigma", "mutation_rate"]
             ## Cast params to correct types
             if param == "project_dir":
                 ## If it already exists then just inform the user that we'll be adding
@@ -176,25 +173,36 @@ class Core(object):
                 except ValueError:
                     raise PIEDError("Bad parameter: `ClaDS` must be `True` or "\
                                     + "`False`.")
-            elif param == "ClaDS_alpha":
+            ## All strictly positive float parameters
+            elif param in ["abundance_sigma", "ClaDS_sigma", "ClaDS_alpha",
+                            "birth_rate", "time", "growth_rate_sigma",
+                            "mutation_rate"]:
                 tup = tuplecheck(newvalue, dtype=float)
-                msg = "Bad parameter: `ClaDS_alpha` must be strictly positive."
+                msg = "Bad parameter: `{}` must be strictly positive.".format(param)
                 if isinstance(tup, tuple):
                     if tup[0] <= 0:
                         raise PIEDError(msg)
                 elif tup <= 0:
                         raise PIEDError(msg)
                 self.paramsdict[param] = tup
-            elif param in ints + floats:
-                dtype = float
-                if param in ints:
-                    dtype = int
-                tup = tuplecheck(newvalue, dtype=dtype)
+            elif param in ["ntaxa", "abundance_mean", "sequence_length",
+                            "sample_size"]:
+                tup = tuplecheck(newvalue, dtype=int)
+                msg = "Bad parameter: `{}` must be strictly positive.".format(param)
+                if isinstance(tup, tuple):
+                    if tup[0] <= 0:
+                        raise PIEDError(msg)
+                    elif tup <= 0:
+                        raise PIEDError(msg)
+                self.paramsdict[param] = tup
+            ## Growth rate mean can be zero, no problem
+            elif param == "growth_rate_mean":
+                tup = tuplecheck(newvalue, dtype=float)
                 self.paramsdict[param] = tup
             else:
                 self.paramsdict[param] = newvalue
         except Exception as inst:
-            ## Do something intelligent here?
+            LOGGER.debug("Error setting parameter: {} {}".format(param, newvalue))
             raise
 
 
@@ -535,7 +543,6 @@ class Core(object):
                                                 dt=dt,
                                                 log=fdict["log"],
                                                 dtype=fdict["dtype"]))
-
                 if self.paramsdict["process"] == "rate":
                     # Apply the population size change
                     try:
