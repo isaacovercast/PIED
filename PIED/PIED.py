@@ -88,8 +88,18 @@ class Core(object):
         self.taxa = {}
 
         ## elite hackers only internal dictionary, normally you shouldn't mess with this
+        ## max_theta - The max value of theta, before we consider the sim to be
+        ##             be degenerate and bail out.
+        ## max_t -  The maximum amount of elapsed time in a given simulation
+        ##          before we consider it degenerate and bail out. In units mya.
+        ##          This is a somewhat unsatisfying solution to a problem that can
+        ##          arise in the clads model. Occasionally as the speciation rate
+        ##          becomes lower and lower, the waiting time becomes higher and
+        ##          higher (astronomical), and eventually it's so long that
+        ##          abundances become infinite and it flips the board.
         self._hackersonly = dict([
                         ("max_theta", 0.7),
+                        ("max_t", 3000),
         ])
 
         ## The empirical msfs
@@ -431,6 +441,7 @@ class Core(object):
 
         printstr = " Performing Simulations    | {} |"
         start = time.time()
+        fail_list = []
         for i in range(nsims):
             try:
                 elapsed = datetime.timedelta(seconds=int(time.time()-start))
@@ -444,10 +455,12 @@ class Core(object):
                 print("\n    Cancelling remaining simulations")
                 break
             except Exception as inst:
-                LOGGER.debug("Simulation failed: {}".format(inst))
-                raise PIEDError("Failed inside serial_simulate:\n{}".format(inst))
+                LOGGER.error("\n\tSimulation failed: {}".format(inst))
+                fail_list.append(inst)
 
         if not quiet: progressbar(100, 100, " Finished {} simulations in   {}\n".format(i+1, elapsed))
+        if len(fail_list) > 0:
+            print("\n  {} failed simulations inside serial_simulate. See PIED_log.txt for details.\n".format(len(fail_list)))
 
         return tree_list
 
@@ -510,9 +523,10 @@ class Core(object):
                 # Raises ValueError if sp.abundanc == 1
                 abund = np.random.randint(1, sp.abundance)
             except ValueError as inst:
-                # If a species of abundance 1 speciates we need to allow this
-                sp.abundance = 2
-                abund = 1
+                ## If abundance == 1 then the call to randint will raise.
+                ## This _used_ to happen, but then I think I fixed it. You can
+                ## remove this the next time you feel like it.
+                raise PIEDError("Sp w/ abundace=1. This should never happen.")
 
             ## Set new species features
             for c in [c1, c2]:
@@ -551,21 +565,20 @@ class Core(object):
                         raise PIEDError("Abundance is too big: {}".format(x.abundance))
 
             # Check boundary conditions for abundance and lambda
+            extinct = []
             for x in tips:
                 # Check extinction and prune out extinct and any resulting hanging branches
                 # If you're the only individual left, you have nobody to mate with so you die.
                 if x.abundance <= 1:
-                    tips.remove(x)
-                    if len(tips) == 0:
-                        # Can't prune to an empty tree, so simply return a new empty tree
-                        tre = toytree.tree()
-                    else:
-                        tre.treenode.prune(tips, preserve_branch_length=True)
+                    extinct.append(x)
                     ext += 1
 
-                # The speciation rate can't be negative
-                elif x.lambda_ < 0:
-                    x.lambda_ = 0
+            tips = [x for x in tips if x not in extinct]
+            if len(tips) == 0:
+                # Can't prune to an empty tree, so simply return a new empty tree
+                tre = toytree.tree()
+            else:
+                tre.treenode.prune(tips, preserve_branch_length=True)
 
             ## This shouldn't be necessary now that we're using the treenode.prune() method
             tre = _prune(tre)
@@ -580,8 +593,9 @@ class Core(object):
                 if t >= self.paramsdict["time"]:
                     done = True
             if len(tips) == 1 and tips[0].name == '0':
-                print("All lineages extinct")
-                done = True
+                raise PIEDError("All lineages extinct")
+            elif t >= self._hackersonly["max_t"]:
+                raise PIEDError("Max time exceded")
             if done:
                 if verbose:
                     print("ntips {}".format(len(tips)))
