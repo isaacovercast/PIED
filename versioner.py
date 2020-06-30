@@ -28,6 +28,7 @@ with open(initfile, 'r') as infile:
     for line in infile:
         if line.strip().startswith("__version__"):
             prev_version = str(line.split("=")[1].strip().strip("\""))
+            break
 print("last version - {}".format(prev_version))
 
 # Update docs/releasenotes.rst to include commit history for this version
@@ -43,7 +44,7 @@ new_commits = subprocess.check_output(cmd.split())
 print(new_commits)
 commit_lines = [x.split(b" ", 1) for x in new_commits.split(b"\n")]
 
-checkfor = "Merge branch 'master' of https://github.com/dereneaton/ipyrad"
+checkfor = "Merge branch 'master' of https://github.com/isaacovercast/PIED"
 # Write updates to releasenotes.rst
 for line in fileinput.input(release_file, inplace=1):
     if line.strip().startswith("=========="):
@@ -71,10 +72,16 @@ for line in fileinput.input(initfile, inplace=1):
         line = "__version__ = \""+version_git+"\""
     print(line.strip("\n"))
 
+conda_yaml_file = "conda.recipe/PIED/meta.yaml"
+for line in fileinput.input(conda_yaml_file, inplace=1):
+    if line.strip().startswith("version"):
+        line = "  version: \"{}\"".format(version_git)
+    print(line.strip("\n"))
 
 try:
     subprocess.call(["git", "add", release_file])
     subprocess.call(["git", "add", initfile])
+    subprocess.call(["git", "add", conda_yaml_file])
     subprocess.call(["git", "commit", "-m \"Updating PIED/__init__.py to "+\
                     "version - {}".format(version_git)])
     subprocess.call(["git", "push"])
@@ -86,7 +93,7 @@ except Exception as e:
 
 print("Push new version of conda installer")
 
-#try:
-#    subprocess.call(["conda", "build", "conda.recipe/ipyrad"])
-#except Exception as e:
-#    print("something broke - {}".format(e))
+try:
+    subprocess.call(["conda", "build", "-c", "conda-forge", "conda.recipe/PIED"])
+except Exception as e:
+    print("something broke - {}".format(e))
