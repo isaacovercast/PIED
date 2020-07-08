@@ -26,6 +26,7 @@ requirements:
     - msprime
     - cloudpickle
     - toytree
+    - scipy
 
   commands:
     - PIED -v
