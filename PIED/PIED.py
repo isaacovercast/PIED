@@ -11,6 +11,7 @@ import tempfile
 import toytree
 
 from collections import OrderedDict
+from scipy.stats import hmean
 
 import PIED
 from PIED.util import *
@@ -97,9 +98,12 @@ class Core(object):
         ##          becomes lower and lower, the waiting time becomes higher and
         ##          higher (astronomical), and eventually it's so long that
         ##          abundances become infinite and it flips the board.
+        ## harmonic_mean - Whether to take the harmonic mean of changing abundance
+        ##                 through time, or simply use current abundance as Ne
         self._hackersonly = dict([
                         ("max_theta", 0.7),
                         ("max_t", 3000),
+                        ("harmonic_mean", True),
         ])
 
         ## The empirical msfs
@@ -426,10 +430,8 @@ class Core(object):
                 LOGGER.error("Failed inside parallel_simulate -\n{}".format(inst))
                 ## Don't let one bad apple spoil the bunch,
                 ## so keep trying through the rest of the asyncs
-        if len(faildict):
-            print(faildict)
+        if len(result_list) < nsims:
             print("\n   One or more simulations failed. Check PIED_log.txt for details.\n")
-        LOGGER.debug(faildict)
 
         return result_list
     
@@ -483,6 +485,8 @@ class Core(object):
             tre.treenode.add_feature(fname, fdict["zbar_0"])
         ## Add the default lambda_ which is only used in ClaDS
         tre.treenode.add_feature("lambda_", self.paramsdict["birth_rate"])
+        ## Add a list to track abundances through time
+        tre.treenode.add_feature("abunds", [])
 
         taxa_stop = self.paramsdict["ntaxa"]
         time_stop = self.paramsdict["time"]
@@ -526,10 +530,17 @@ class Core(object):
                 ## If abundance == 1 then the call to randint will raise.
                 ## This _used_ to happen, but then I think I fixed it. You can
                 ## remove this the next time you feel like it.
-                raise PIEDError("Sp w/ abundace=1. This should never happen.")
+                if sp.abundance == 1:
+                    raise PIEDError("Sp w/ abundance=1. This should never happen.")
+                else:
+                    raise PIEDError("Abundance exceeds int64: {}".format(sp.abundance))
+
+            c1.add_feature("abundance", abund)
+            c2.add_feature("abundance", sp.abundance-abund)
 
             ## Set new species features
             for c in [c1, c2]:
+                c.abunds = [c.abundance]
                 c.r = sp.r
                 c.trait = sp.trait
                 if self.paramsdict["ClaDS"]:
@@ -538,9 +549,6 @@ class Core(object):
                                                        self.paramsdict["ClaDS_sigma"])
                 else:
                     c.lambda_ = sp.lambda_
-
-            c1.add_feature("abundance", abund)
-            c2.add_feature("abundance", sp.abundance-abund)
 
             # Update branch length, evolve features, and update abundance
             tips = tre.treenode.get_leaves()
@@ -563,6 +571,8 @@ class Core(object):
                         x.abundance = int(x.abundance * (np.exp(x.r*dt)))
                     except Exception as inst:
                         raise PIEDError("Abundance is too big: {}".format(x.abundance))
+                ## Record abundance through time
+                x.abunds.append(x.abundance)
 
             # Check boundary conditions for abundance and lambda
             extinct = []
@@ -581,7 +591,7 @@ class Core(object):
                 tre.treenode.prune(tips, preserve_branch_length=True)
 
             ## This shouldn't be necessary now that we're using the treenode.prune() method
-            tre = _prune(tre)
+            #tre = _prune(tre)
 
             tips = tre.treenode.get_leaves()
             # Check stopping criterion
@@ -615,7 +625,9 @@ class Core(object):
                 ## Relabel tips to have reasonable names
                 for i, tip in enumerate(tips[::-1]):
                     tip.name = "r{}".format(i)
-                    tip.pi = nucleotide_diversity(self.paramsdict, node=tip)
+                    tip.pi = nucleotide_diversity(self.paramsdict,
+                                                    node=tip,
+                                                    harmonic=self._hackersonly["harmonic_mean"])
                 ## Build the output list to return which will include
                 ##  * parameters of the model
                 ##  * observed ntaxa and time, and calculated extinction rate
@@ -675,7 +687,7 @@ class Core(object):
         if (not os.path.exists(simfile)) or force:
             params = self._get_params_header()
             params.extend(["obs_ntaxa", "obs_time", "turnover_rate"])
-            params.append("data(name:abundance:pi:r:lambda)")
+            params.append("data")
             params.append("tree")
             with open(simfile, 'w') as simout:
                 simout.write(" ".join(params) + "\n")
@@ -695,9 +707,13 @@ def serial_simulate(model, nsims=1, quiet=False, verbose=False):
 ###########################
 ## Random utility functions
 ###########################
-def nucleotide_diversity(paramsdict, node):
+def nucleotide_diversity(paramsdict, node, harmonic=False):
+    if harmonic:
+        abundance = hmean(node.abunds)
+    else:
+        abundance = node.abundance
     ts = msprime.simulate(sample_size=paramsdict["sample_size"],
-                            Ne=node.abundance,
+                            Ne=abundance,
                             length=paramsdict["sequence_length"],
                             mutation_rate=paramsdict["mutation_rate"])
     ## By default tskit.diversity() is per base
@@ -711,7 +727,7 @@ def nucleotide_diversity_ILS(paramsdict, tree, debug=False):
     msp_idx = 0
     ## Traverse the tree generating population configurations for tips and
     ## nodes. Kind of annoying.
-    for i, node in enumerate(tree.traverse("postorder")):
+    for i, node in enumerate(tree.treenode.traverse("postorder")):
         children = node.get_descendants()
         if len(children) == 0:
             pop = msprime.PopulationConfiguration(sample_size=5, initial_size=node.abundance)
@@ -748,7 +764,7 @@ def nucleotide_diversity_ILS(paramsdict, tree, debug=False):
         pop_inds[pop.id] = ts.samples(pop.id)
     pis = ts.diversity(list(pop_inds.values()))
 
-    for pi, leaf in zip(pis, tree.get_leaves()):
+    for pi, leaf in zip(pis, tree.treenode.get_leaves()):
         leaf.pi = pi
 
     return ts, tree

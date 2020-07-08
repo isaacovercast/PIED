@@ -170,7 +170,7 @@ def load_sims(sims, sep=" "):
         params_df = sim_df[sim_df.columns[:-2]]
 
         sims = []
-        for rec in sim_df["data(name:abundance:pi:r:lambda)"]:
+        for rec in sim_df["data"]:
         # split the records for each species, separated by ','
             dat = rec.split(",")
             dat = {x:{"abundance":int(y), "pi":float(z), "r":float(aa), "lambda_":float(bb)} for x, y, z, aa, bb in map(lambda x: x.split(":"), dat)}
