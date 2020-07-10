@@ -39,6 +39,7 @@ Look at the params and edit them if you wish:
     500                  ## [14] [sequence_length]: Length of the genomic region simulated, in base pairs.
     1e-05                ## [15] [mutation_rate]: Mutation rate per base per generation
     10                   ## [16] [sample_size]: Number of samples to draw for calculating genetic diversity
+    None                 ## [17] [abundance_scaling]: Scaling abundance to Ne. Can be None, log, ln or a ratio.
 
 Run 10 simulations:
 

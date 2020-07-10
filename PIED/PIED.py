@@ -77,7 +77,7 @@ class Core(object):
                        ("sequence_length", 500),
                        ("mutation_rate", 1e-5),
                        ("sample_size", 10),
-                       ("abundance_scaling", "")
+                       ("abundance_scaling", "None")
         ])
 
         ## Separator to use for reading/writing files
@@ -189,14 +189,14 @@ class Core(object):
                     raise PIEDError("Bad parameter: `ClaDS` must be `True` or "\
                                     + "`False`.")
             elif param == "abundance_scaling":
-                if newvalue in ["log"] or newvalue == "":
+                if newvalue in ["log", "ln", "None"]:
                     self.paramsdict[param] = newvalue
                 else:
                     try:
                         self.paramsdict[param] = float(newvalue)
                     except ValueError:
-                        raise PIEDError("Bad parameter: If set to a value, `abundance_scaling` must be "\
-                                        +"either 'log' or a ratio as a float value.")
+                        raise PIEDError("Bad parameter: `abundance_scaling` must be "\
+                                        +"'None', 'log', 'ln' or a ratio as a float value.")
             ## All strictly positive float parameters
             elif param in ["abundance_sigma", "ClaDS_sigma", "ClaDS_alpha",
                             "birth_rate", "time", "growth_rate_sigma",
@@ -722,12 +722,15 @@ def serial_simulate(model, nsims=1, quiet=False, verbose=False):
 ## Random utility functions
 ###########################
 def _scale_abundance(tip, abundance_scaling):
-    if abundance_scaling == "":
+    if abundance_scaling == "None":
         tip.Ne = tip.abundance
         tip.Nes = tip.abunds
-    elif abundance_scaling == "log":
+    elif abundance_scaling == "ln":
         tip.Ne = np.log(tip.abundance)
         tip.Nes = np.log(tip.abunds)
+    elif abundance_scaling == "log":
+        tip.Ne = np.log10(tip.abundance)
+        tip.Nes = np.log10(tip.abunds)
     else:
         tip.Ne = tip.abundance * abundance_scaling
         tip.Nes = [x * abundance_scaling for x in tip.abunds]
@@ -968,12 +971,12 @@ PARAMS = {
     "abundance_sigma" : "Rate at which abundance changes if process is `abundance`",\
     "growth_rate_mean" : "Ancestral population growth rate at time 0.",\
     "growth_rate_sigma" : "Rate at which growth rate changes if process is `rate`",\
-    "ClaDS_sigma" : "Rate at which speciation rate changes if ClaDS is True.",\
+    "ClaDS_sigma" : "Rate at which speciation rate changes if ClaDS is True",\
     "ClaDS_alpha" : "Rate shift if ClaDS is True",\
-    "sequence_length" : "Length of the genomic region simulated, in base pairs.",\
+    "sequence_length" : "Length of the genomic region simulated, in base pairs",\
     "mutation_rate" : "Mutation rate per base per generation",\
     "sample_size" : "Number of samples to draw for calculating genetic diversity",\
-    "abundance_scaling" : "Scaling abundance to Ne. Can be None, log, or a ratio."
+    "abundance_scaling" : "Scaling abundance to Ne. Can be None, log, ln or a ratio"
 }
 
 
