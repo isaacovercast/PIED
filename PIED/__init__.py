@@ -1,7 +1,7 @@
 """
 PIED - Phylogeographic Temporal Analysis
 """
-__version__ = "0.0.7"
+__version__ = "0.0.8"
 __author__ = "Isaac Overcast"
 
 ## Possible values for __loglevel__: "DEBUG"  "INFO"  "WARN"  "ERROR"
