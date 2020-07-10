@@ -76,7 +76,8 @@ class Core(object):
                        ("ClaDS_alpha", 0.1),
                        ("sequence_length", 500),
                        ("mutation_rate", 1e-5),
-                       ("sample_size", 10)
+                       ("sample_size", 10),
+                       ("abundance_scaling", "")
         ])
 
         ## Separator to use for reading/writing files
@@ -187,6 +188,15 @@ class Core(object):
                 except ValueError:
                     raise PIEDError("Bad parameter: `ClaDS` must be `True` or "\
                                     + "`False`.")
+            elif param == "abundance_scaling":
+                if newvalue in ["log"] or newvalue == "":
+                    self.paramsdict[param] = newvalue
+                else:
+                    try:
+                        self.paramsdict[param] = float(newvalue)
+                    except ValueError:
+                        raise PIEDError("Bad parameter: If set to a value, `abundance_scaling` must be "\
+                                        +"either 'log' or a ratio as a float value.")
             ## All strictly positive float parameters
             elif param in ["abundance_sigma", "ClaDS_sigma", "ClaDS_alpha",
                             "birth_rate", "time", "growth_rate_sigma",
@@ -625,6 +635,8 @@ class Core(object):
                 ## Relabel tips to have reasonable names
                 for i, tip in enumerate(tips[::-1]):
                     tip.name = "r{}".format(i)
+                    ## Scale abundance through time to Ne by some fashion
+                    tip = _scale_abundance(tip, self.paramsdict["abundance_scaling"])
                     tip.pi = nucleotide_diversity(self.paramsdict,
                                                     node=tip,
                                                     harmonic=self._hackersonly["harmonic_mean"])
@@ -693,7 +705,9 @@ class Core(object):
                 simout.write(" ".join(params) + "\n")
 
         with open(simfile, 'a') as output:
-            output.write("\n".join([" ".join(x) for x in result_list]) + "\n")
+            ## Don't write a newline if all simulations failed
+            if result_list:
+                output.write("\n".join([" ".join(x) for x in result_list]) + "\n")
 
 
 def serial_simulate(model, nsims=1, quiet=False, verbose=False):
@@ -707,13 +721,26 @@ def serial_simulate(model, nsims=1, quiet=False, verbose=False):
 ###########################
 ## Random utility functions
 ###########################
+def _scale_abundance(tip, abundance_scaling):
+    if abundance_scaling == "":
+        tip.Ne = tip.abundance
+        tip.Nes = tip.abunds
+    elif abundance_scaling == "log":
+        tip.Ne = np.log(tip.abundance)
+        tip.Nes = np.log(tip.abunds)
+    else:
+        tip.Ne = tip.abundance * abundance_scaling
+        tip.Nes = [x * abundance_scaling for x in tip.abunds]
+    return tip
+
+
 def nucleotide_diversity(paramsdict, node, harmonic=False):
     if harmonic:
-        abundance = hmean(node.abunds)
+        Ne = hmean(node.Nes)
     else:
-        abundance = node.abundance
+        Ne = node.Ne
     ts = msprime.simulate(sample_size=paramsdict["sample_size"],
-                            Ne=abundance,
+                            Ne=Ne,
                             length=paramsdict["sequence_length"],
                             mutation_rate=paramsdict["mutation_rate"])
     ## By default tskit.diversity() is per base
@@ -730,7 +757,7 @@ def nucleotide_diversity_ILS(paramsdict, tree, debug=False):
     for i, node in enumerate(tree.treenode.traverse("postorder")):
         children = node.get_descendants()
         if len(children) == 0:
-            pop = msprime.PopulationConfiguration(sample_size=5, initial_size=node.abundance)
+            pop = msprime.PopulationConfiguration(sample_size=5, initial_size=node.Ne)
             population_configurations.append(pop)
             node.add_feature("msprime_idx", msp_idx)
             if debug: print("I'm a tip {} - {}".format(node.idx, node.msprime_idx))
@@ -945,7 +972,8 @@ PARAMS = {
     "ClaDS_alpha" : "Rate shift if ClaDS is True",\
     "sequence_length" : "Length of the genomic region simulated, in base pairs.",\
     "mutation_rate" : "Mutation rate per base per generation",\
-    "sample_size" : "Number of samples to draw for calculating genetic diversity"
+    "sample_size" : "Number of samples to draw for calculating genetic diversity",\
+    "abundance_scaling" : "Scaling abundance to Ne. Can be None, log, or a ratio."
 }
 
 
