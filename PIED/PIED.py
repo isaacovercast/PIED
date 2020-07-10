@@ -624,10 +624,14 @@ class Core(object):
                     print("Extinctions (per birth) {} ({})".format(ext, ext/evnts))
                 tre._coords.update()
 
+                ## Scale abundance to Ne for each tip. The call to _scale_abundance
+                ## returns the tip with Ne/Nes set
+                tips = [_scale_abundance(t, self.paramsdict["abundance_scaling"]) for t in tips]
+
                 ## Test for 'reasonable' theta values. If theta gets too large
                 ## two things happen: biologically meaningless pi values, and
                 ## runtime of msprime _explodes_.
-                thetas = np.array([x.abundance * self.paramsdict["mutation_rate"] for x in tips])
+                thetas = np.array([x.Ne * self.paramsdict["mutation_rate"] for x in tips])
                 if np.any(thetas > self._hackersonly["max_theta"]):
                     raise PIEDError(MAX_THETA_ERROR.format(self._hackersonly["max_theta"],\
                                                             np.max(thetas)))
@@ -636,7 +640,6 @@ class Core(object):
                 for i, tip in enumerate(tips[::-1]):
                     tip.name = "r{}".format(i)
                     ## Scale abundance through time to Ne by some fashion
-                    tip = _scale_abundance(tip, self.paramsdict["abundance_scaling"])
                     tip.pi = nucleotide_diversity(self.paramsdict,
                                                     node=tip,
                                                     harmonic=self._hackersonly["harmonic_mean"])
