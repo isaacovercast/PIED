@@ -80,6 +80,9 @@ class Core(object):
                        ("abundance_scaling", "None")
         ])
 
+        ## Any params that are specified as priors get stored here
+        self._priors = {}
+
         ## Separator to use for reading/writing files
         self._sep = " "
 
@@ -106,9 +109,6 @@ class Core(object):
                         ("max_t", 3000),
                         ("harmonic_mean", True),
         ])
-
-        ## The empirical msfs
-        self.empirical_msfs = ""
 
 
     #########################
@@ -201,30 +201,35 @@ class Core(object):
             elif param in ["abundance_sigma", "ClaDS_sigma", "ClaDS_alpha",
                             "birth_rate", "time", "growth_rate_sigma",
                             "mutation_rate"]:
-                tup = tuplecheck(newvalue, dtype=float)
+                newvalue = tuplecheck(newvalue, dtype=float)
                 msg = "Bad parameter: `{}` must be strictly positive.".format(param)
-                if isinstance(tup, tuple):
-                    if tup[0] <= 0:
+                if isinstance(newvalue, tuple):
+                    if newvalue[0] <= 0:
                         raise PIEDError(msg)
-                elif tup <= 0:
+                elif newvalue <= 0:
                         raise PIEDError(msg)
-                self.paramsdict[param] = tup
+                self.paramsdict[param] = newvalue
             elif param in ["ntaxa", "abundance_mean", "sequence_length",
                             "sample_size"]:
-                tup = tuplecheck(newvalue, dtype=int)
+                newvalue = tuplecheck(newvalue, dtype=int)
                 msg = "Bad parameter: `{}` must be strictly positive.".format(param)
-                if isinstance(tup, tuple):
-                    if tup[0] <= 0:
+                if isinstance(newvalue, tuple):
+                    if newvalue[0] <= 0:
                         raise PIEDError(msg)
-                    elif tup <= 0:
-                        raise PIEDError(msg)
-                self.paramsdict[param] = tup
+                elif newvalue <= 0:
+                    raise PIEDError(msg)
+                self.paramsdict[param] = newvalue
             ## Growth rate mean can be zero, no problem
             elif param == "growth_rate_mean":
-                tup = tuplecheck(newvalue, dtype=float)
-                self.paramsdict[param] = tup
+                newvalue = tuplecheck(newvalue, dtype=float)
+                self.paramsdict[param] = newvalue
             else:
                 self.paramsdict[param] = newvalue
+
+            ## If its a prior range store it in the _priors dict
+            if isinstance(newvalue, tuple):
+                self._priors[param] = newvalue
+
         except Exception as inst:
             LOGGER.debug("Error setting parameter: {} {}".format(param, newvalue))
             raise
@@ -479,6 +484,8 @@ class Core(object):
 
     def _simulate(self, verbose=False):
         
+        self._sample_priors()
+
         # Each species has an attribute for each feature in this dictionary.
         #  abundance - Abundance of the species
         #  r - Rate at which abundance changes, can be negative
@@ -711,6 +718,27 @@ class Core(object):
             ## Don't write a newline if all simulations failed
             if result_list:
                 output.write("\n".join([" ".join(x) for x in result_list]) + "\n")
+
+
+    def _sample_priors(self, loguniform=False):
+        """
+        For any param that is specified as a tuple, sample an individual value
+        from the prior.
+        """
+        for k, param in self._priors.items():
+            if isinstance(param[0], float):
+                if loguniform:
+                    param = np.random.uniform(np.log10(param[0]), np.log10(param[1]))
+                    param = np.power(10, param)
+                else:
+                    param = np.random.uniform(param[0], param[1])
+            else:
+                if loguniform:
+                    param = np.random.uniform(np.log10(param[0]), np.log10(param[1]))
+                    param = np.int32(np.power(10, param))
+                else:
+                    param = np.random.randint(param[0], param[1])
+            self.paramsdict[k] = param
 
 
 def serial_simulate(model, nsims=1, quiet=False, verbose=False):
